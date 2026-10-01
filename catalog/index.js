@@ -483,29 +483,49 @@ async function extractIdsFromPage(html, animeUrl) {
   if (csrfM) csrf = csrfM[1].trim();
 
   var animeId = 0;
-  // data-anime / anime_id / var anime_id
+  // data-anime en div.ml-2 (scraper actual), data-anime-id, anime_id, ajax paths
   var idM =
-    /data-anime(?:-id)?=["'](\d+)["']/i.exec(html) ||
+    /data-anime=["'](\d+)["']/i.exec(html) ||
+    /data-anime-id=["'](\d+)["']/i.exec(html) ||
     /anime[_-]?id["']?\s*[:=]\s*["']?(\d+)/i.exec(html) ||
+    /\/ajax\/pagination_episodes\/(\d+)\//i.exec(html) ||
     /\/ajax\/episodes\/(\d+)\//i.exec(html);
   if (idM) animeId = parseInt(idM[1], 10) || 0;
 
+  // Páginas de episodios desde enlaces #pagN
+  var pages = [];
+  var pageRe = /href=["'][^"']*#pag(\d+)["']/gi;
+  var pm;
+  var seenP = {};
+  while ((pm = pageRe.exec(html))) {
+    var p = parseInt(pm[1], 10) || 1;
+    if (!seenP[p]) {
+      seenP[p] = true;
+      pages.push(p);
+    }
+  }
+  if (pages.length === 0) pages = [1];
+
   var slug = slugFromUrl(animeUrl);
-  return { csrf: csrf, animeId: animeId, slug: slug };
+  return { csrf: csrf, animeId: animeId, slug: slug, pages: pages };
 }
 
 function parseAnimeInfo(html, url) {
   var title = '';
   var tM =
+    /class=["'][^"']*anime__details__title[^"']*["'][^>]*>[\s\S]*?<h3[^>]*>([^<]+)/i.exec(html) ||
     /<h1[^>]*>([^<]+)<\/h1>/i.exec(html) ||
+    /<h3[^>]*>([^<]+)<\/h3>/i.exec(html) ||
     /<title>([^|<]+)/i.exec(html);
   if (tM) title = tM[1].replace(/\s*[-|].*$/, '').trim();
 
   var overview = '';
   var oM =
+    /class=["'][^"']*anime__details__text[^"']*["'][^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i.exec(html) ||
     /<p[^>]*class="[^"]*(?:sinopsis|synopsis|description|text)[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(
       html
-    ) || /itemprop=["']description["'][^>]*>([\s\S]*?)</i.exec(html);
+    ) ||
+    /itemprop=["']description["'][^>]*>([\s\S]*?)</i.exec(html);
   if (oM) {
     overview = oM[1]
       .replace(/<[^>]+>/g, '')
@@ -518,6 +538,7 @@ function parseAnimeInfo(html, url) {
     /<div[^>]*class="[^"]*anime__details__pic[^"]*"[^>]*data-setbg=["']([^"']+)["']/i.exec(
       html
     ) ||
+    /class=["'][^"']*anime__details__pic[^"']*["'][^>]*data-setbg=["']([^"']+)["']/i.exec(html) ||
     /<img[^>]*class="[^"]*(?:poster|cover|anime)[^"]*"[^>]*src=["']([^"']+)["']/i.exec(
       html
     );
@@ -547,7 +568,8 @@ function parseAnimeInfo(html, url) {
   var epM =
     /(?:Episodios|Episodes|Capítulos)[^:]*:\s*<\/?(?:[^>]+>)?\s*(\d+)/i.exec(
       html
-    );
+    ) ||
+    /data-total=["'](\d+)["']/i.exec(html);
   if (epM) totalEps = parseInt(epM[1], 10) || 0;
 
   return {
@@ -561,32 +583,39 @@ function parseAnimeInfo(html, url) {
   };
 }
 
-async function fetchEpisodesAjax(animeId, csrf, animeUrl, cookie) {
-  if (!animeId || !csrf) return [];
+async function fetchEpisodesAjax(animeId, pages, animeUrl) {
+  // Endpoint actual de JKAnime: GET /ajax/pagination_episodes/{id}/{page}/
+  // (el antiguo POST /ajax/episodes/ + CSRF ya no funciona)
+  if (!animeId) return [];
   var all = [];
-  var page = 1;
-  var maxPages = 50;
+  var pageList = Array.isArray(pages) && pages.length ? pages : [1];
+  // Ordenar páginas numéricamente
+  pageList = pageList.slice().sort(function (a, b) {
+    return a - b;
+  });
 
-  while (page <= maxPages) {
-    var url = BASE + '/ajax/episodes/' + animeId + '/' + page;
+  for (var pi = 0; pi < pageList.length; pi++) {
+    var page = pageList[pi];
+    var url = BASE + '/ajax/pagination_episodes/' + animeId + '/' + page + '/';
     try {
       var res = await fetch(url, {
-        method: 'POST',
+        method: 'GET',
         headers: headers({
           Accept: 'application/json, text/javascript, */*; q=0.01',
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRF-TOKEN': csrf,
           Referer: animeUrl,
-          Origin: BASE,
-          Cookie: cookie || '',
         }),
-        body: '_token=' + encodeURIComponent(csrf),
       });
-      if (res.status === 419) break;
       if (!res.ok) break;
-      var data = await res.json();
-      var list = data.data || data.episodes || data || [];
+      var text = await res.text();
+      var data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        break;
+      }
+      // Puede ser array directo o { data: [...] }
+      var list = Array.isArray(data) ? data : data.data || data.episodes || [];
       if (!Array.isArray(list) || list.length === 0) break;
 
       for (var i = 0; i < list.length; i++) {
@@ -597,13 +626,17 @@ async function fetchEpisodesAjax(animeId, csrf, animeUrl, cookie) {
         var epUrl =
           absUrl(ep.url || ep.link || '') ||
           animeUrl.replace(/\/$/, '') + '/' + num + '/';
+        var img = ep.image || ep.thumbnail || '';
+        if (img && img.indexOf('http') !== 0 && img.indexOf('/') !== 0) {
+          img = CDN + '/assets/images/animes/video/image_thumb/' + img;
+        }
         all.push({
           id: 'jkanime:' + slugFromUrl(animeUrl) + ':' + num,
           title: ep.title || 'Episodio ' + num,
           seasonNumber: 1,
           episodeNumber: num,
           overview: ep.synopsis || ep.description || '',
-          poster: absImg(ep.image || ep.thumbnail || ''),
+          poster: absImg(img),
           airDate: ep.date || null,
           extra: {
             jkanimeUrl: epUrl,
@@ -611,14 +644,14 @@ async function fetchEpisodesAjax(animeId, csrf, animeUrl, cookie) {
           },
         });
       }
-
-      var last = parseInt(data.last_page || data.lastPage || 1, 10) || 1;
-      if (page >= last) break;
-      page++;
     } catch (e) {
       break;
     }
   }
+  // Ordenar por número de episodio
+  all.sort(function (a, b) {
+    return (a.episodeNumber || 0) - (b.episodeNumber || 0);
+  });
   return all;
 }
 
@@ -692,9 +725,8 @@ async function getMeta(args, config) {
     try {
       episodes = await fetchEpisodesAjax(
         ids.animeId,
-        ids.csrf,
-        jkUrl,
-        ''
+        ids.pages,
+        jkUrl
       );
     } catch (e) {}
 
@@ -704,9 +736,17 @@ async function getMeta(args, config) {
 
     // Si aún no hay total, intentar contar desde HTML
     if (episodes.length === 0) {
-      var countM = /data-total=["'](\d+)["']/i.exec(html);
+      var countM =
+        /data-total=["'](\d+)["']/i.exec(html) ||
+        /(?:Episodios|Episodes|Capítulos)\s*:\s*(\d+)/i.exec(html) ||
+        /class=["'][^"']*numbers[^"']*["'][^>]*>[\s\S]*?(\d+)\s*<\/a>\s*$/im.exec(html);
       var total = countM ? parseInt(countM[1], 10) : 0;
       if (total > 0) episodes = buildEpisodesFromTotal(slug, total);
+    }
+
+    // Último recurso: si hay animeId pero 0 eps, generar al menos 1 y dejar que la fuente resuelva
+    if (episodes.length === 0 && ids.animeId) {
+      episodes = buildEpisodesFromTotal(slug, 12);
     }
 
     item.extra.seasons = [
