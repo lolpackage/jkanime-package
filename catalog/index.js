@@ -91,9 +91,18 @@ function absUrl(u) {
 function absImg(u) {
   if (!u) return null;
   u = String(u).trim();
+  if (!u || u === 'null' || u === 'undefined') return null;
   if (u.indexOf('http') === 0) return u;
   if (u.indexOf('//') === 0) return 'https:' + u;
+  // Rutas del CDN jkdesu
+  if (u.indexOf('cdn.jkdesu') >= 0 || u.indexOf('jkdesu.com') >= 0) {
+    if (u.indexOf('http') !== 0) return 'https://' + u.replace(/^\/+/, '');
+  }
   if (u.charAt(0) === '/') return CDN + u;
+  // Si parece path de imagen de anime
+  if (u.indexOf('animes/') === 0 || u.indexOf('assets/') === 0) {
+    return CDN + '/' + u;
+  }
   return CDN + '/' + u;
 }
 
@@ -105,15 +114,18 @@ function mapTipoToType(tipo) {
 
 function mapItemFromDirectorio(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  var title = String(raw.title || raw.short_title || '').trim();
-  if (!title) return null;
-  var url = absUrl(raw.url || '');
-  var slug = slugFromUrl(url);
+  var title = String(raw.title || raw.short_title || raw.name || '').trim();
+  var url = absUrl(raw.url || raw.slug || '');
+  var slug = slugFromUrl(url) || String(raw.slug || '').replace(/^\/+|\/+$/g, '');
   if (!slug) return null;
+  if (!title) title = slug.replace(/-/g, ' ');
   var tipo = String(raw.tipo || raw.type || 'Anime');
   var type = mapTipoToType(tipo);
-  var poster = absImg(raw.image || '');
-  var overview = String(raw.synopsis || '').trim();
+  var poster = absImg(raw.image || raw.poster || raw.img || '');
+  if (!poster) {
+    poster = CDN + '/assets/images/animes/image/' + slug + '.jpg';
+  }
+  var overview = String(raw.synopsis || raw.description || '').trim();
   var status = String(raw.status || raw.estado || '').trim();
 
   var id = 'jkanime:' + slug;
@@ -122,9 +134,12 @@ function mapItemFromDirectorio(raw) {
   return {
     id: id,
     title: title,
+    name: title,
     type: type,
     overview: overview,
     poster: poster,
+    posterUrl: poster,
+    image: poster,
     genres: [],
     year: null,
     rating: null,
@@ -146,16 +161,25 @@ function mapItemFromSearch(node) {
   var title = String(node.title || '').trim();
   var url = absUrl(node.url || '');
   var slug = slugFromUrl(url);
-  if (!title || !slug) return null;
+  if (!slug) return null;
+  if (!title) title = slug.replace(/-/g, ' ');
   var tipo = String(node.type || 'Anime');
   var type = mapTipoToType(tipo);
   var jkUrl = animeUrl(slug);
+  var poster = absImg(node.image || '');
+  // Poster fallback por convención del CDN
+  if (!poster && slug) {
+    poster = CDN + '/assets/images/animes/image/' + slug + '.jpg';
+  }
   return {
     id: 'jkanime:' + slug,
     title: title,
+    name: title,
     type: type,
     overview: '',
-    poster: absImg(node.image || ''),
+    poster: poster,
+    posterUrl: poster,
+    image: poster,
     genres: [],
     year: null,
     rating: null,
@@ -173,15 +197,23 @@ function mapItemFromSearch(node) {
 
 function mapItemFromHomeCard(url, image, title, tipo, status) {
   var slug = slugFromUrl(url);
-  if (!slug || !title) return null;
+  if (!slug) return null;
+  var t = String(title || '').trim() || slug.replace(/-/g, ' ');
   var type = mapTipoToType(tipo);
   var jkUrl = animeUrl(slug);
+  var poster = absImg(image);
+  if (!poster) {
+    poster = CDN + '/assets/images/animes/image/' + slug + '.jpg';
+  }
   return {
     id: 'jkanime:' + slug,
-    title: String(title).trim(),
+    title: t,
+    name: t,
     type: type,
     overview: '',
-    poster: absImg(image),
+    poster: poster,
+    posterUrl: poster,
+    image: poster,
     genres: [],
     year: null,
     rating: null,
@@ -210,31 +242,47 @@ async function fetchDirectorio(opts) {
   if (opts.orden) params.push('orden=' + encodeURIComponent(opts.orden));
 
   var url = BASE + '/directorio' + (params.length ? '?' + params.join('&') : '');
+  // También probar rutas tipo /directorio/animes/
+  if (opts.tipo && !opts.filtro && !opts.genero && page === 1) {
+    url = BASE + '/directorio/' + opts.tipo + '/';
+  }
   var html = await fetchHtml(url);
 
+  // 1) JSON embebido: var animes = { data: [...], ... }
   var m = html.match(/var\s+animes\s*=\s*(\{[\s\S]*?\});/i);
-  if (!m) return { items: [], currentPage: 1, lastPage: 1, total: 0 };
-
-  var decoded;
-  try {
-    decoded = JSON.parse(m[1]);
-  } catch (e) {
-    return { items: [], currentPage: 1, lastPage: 1, total: 0 };
+  if (m) {
+    var decoded;
+    try {
+      decoded = JSON.parse(m[1]);
+      var data = decoded.data || decoded.animes || [];
+      var items = [];
+      for (var i = 0; i < data.length; i++) {
+        var it = mapItemFromDirectorio(data[i]);
+        if (it) items.push(it);
+      }
+      if (items.length) {
+        return {
+          items: items,
+          currentPage: parseInt(decoded.current_page, 10) || page,
+          lastPage: parseInt(decoded.last_page, 10) || 1,
+          total: parseInt(decoded.total, 10) || items.length,
+        };
+      }
+    } catch (e) {}
   }
 
-  var data = decoded.data || [];
-  var items = [];
-  for (var i = 0; i < data.length; i++) {
-    var it = mapItemFromDirectorio(data[i]);
-    if (it) items.push(it);
+  // 2) Fallback: scrape HTML de tarjetas anime__item / .g-0
+  var htmlItems = parseAnimeItemsFromHtml(html);
+  if (htmlItems.length) {
+    return {
+      items: htmlItems,
+      currentPage: page,
+      lastPage: page,
+      total: htmlItems.length,
+    };
   }
 
-  return {
-    items: items,
-    currentPage: parseInt(decoded.current_page, 10) || page,
-    lastPage: parseInt(decoded.last_page, 10) || 1,
-    total: parseInt(decoded.total, 10) || items.length,
-  };
+  return { items: [], currentPage: 1, lastPage: 1, total: 0 };
 }
 
 // ─── HOME (scraping ligero) ───────────────────────────────
@@ -356,58 +404,166 @@ async function getHome(args, config) {
   return { rows: rows };
 }
 
-async function search(args, config) {
-  var q = (args && (args.query || args.q)) || '';
-  q = String(q).trim();
-  if (!q) return { items: [] };
-
-  var url = BASE + '/buscar/' + encodeURIComponent(q);
-  var html = await fetchHtml(url);
-
+/**
+ * Parsea bloques div.anime__item del HTML de búsqueda / directorio.
+ * Estructura actual (Storm / ani-scrapy):
+ *   div.row div.anime__item
+ *     a  → href
+ *     .set-bg[data-setbg] o img[src] → poster
+ *     .title o h5 a → título
+ */
+function parseAnimeItemsFromHtml(html) {
   var items = [];
   var seen = {};
+  if (!html) return items;
 
-  // div.page_directorio div.anime__item
-  var re = /<div[^>]*class="[^"]*anime__item[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*anime__item|$)/gi;
+  // Cortar por cada anime__item
+  var re = /<div[^>]*class="[^"]*anime__item[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*anime__item|<\/div>\s*<\/div>\s*<\/div>|$)/gi;
   var block;
   while ((block = re.exec(html))) {
-    var chunk = block[0];
-    var linkM =
-      /<h5[^>]*>\s*<a[^>]*href=["']([^"']+)["'][^>]*>([^<]*)/i.exec(chunk) ||
-      /<a[^>]*href=["']([^"']*jkanime\.net[^"']*)["'][^>]*>([^<]*)/i.exec(chunk);
-    if (!linkM) continue;
-    var href = absUrl(linkM[1]);
-    var title = (linkM[2] || '').trim();
+    var chunk = block[0] + (block[1] || '');
+
+    // href: primer <a href="...">
+    var hrefM =
+      /<a[^>]*href=["']([^"']+)["'][^>]*>/i.exec(chunk);
+    if (!hrefM) continue;
+    var href = absUrl(hrefM[1]);
     var slug = slugFromUrl(href);
     if (!slug || seen[slug]) continue;
-    if (/\/(buscar|directorio)\b/i.test(href)) continue;
+    if (/\/(buscar|directorio|genero|categoria)\b/i.test(href)) continue;
 
-    var imgM = /(?:data-setbg|src)=["']([^"']+)["']/i.exec(chunk);
+    // título: .title, h5>a, h5, alt de img
+    var title = '';
+    var tM =
+      /class=["'][^"']*title[^"']*["'][^>]*>([^<]+)/i.exec(chunk) ||
+      /<h5[^>]*>\s*<a[^>]*>([^<]+)/i.exec(chunk) ||
+      /<h5[^>]*>([^<]+)/i.exec(chunk) ||
+      /alt=["']([^"']+)["']/i.exec(chunk);
+    if (tM) title = tM[1].replace(/\s+/g, ' ').trim();
+    if (!title) title = slug.replace(/-/g, ' ');
+
+    // poster: data-setbg en .set-bg, o src de img
+    var img = '';
+    var imgM =
+      /class=["'][^"']*set-bg[^"']*["'][^>]*data-setbg=["']([^"']+)["']/i.exec(chunk) ||
+      /data-setbg=["']([^"']+)["']/i.exec(chunk) ||
+      /<img[^>]*src=["']([^"']+)["']/i.exec(chunk);
+    if (imgM) img = imgM[1];
+
+    var status = '';
     var statusM = /(?:status|estado)[^>]*>([^<]+)/i.exec(chunk);
-    var typeM = /(?:tipo|type)[^>]*>([^<]+)/i.exec(chunk);
+    if (statusM) status = statusM[1].trim();
+
+    var tipo = 'Anime';
+    var typeM =
+      /<li[^>]*class=["'][^"']*anime[^"']*["'][^>]*>([^<]+)/i.exec(chunk) ||
+      /(?:tipo|type)[^>]*>([^<]+)/i.exec(chunk);
+    if (typeM) tipo = typeM[1].trim();
 
     var it = mapItemFromSearch({
-      title: title || slug.replace(/-/g, ' '),
+      title: title,
       url: href,
-      image: imgM ? imgM[1] : '',
-      status: statusM ? statusM[1].trim() : '',
-      type: typeM ? typeM[1].trim() : 'Anime',
+      image: img,
+      status: status,
+      type: tipo,
     });
-    if (it) {
+    if (it && it.title) {
       seen[slug] = true;
       items.push(it);
     }
   }
 
-  // Fallback: si el HTML no matcheó, intentar directorio con filtro nombre
+  // Fallback más laxo: cualquier enlace a /slug/ con imagen cercana
+  if (items.length === 0) {
+    var linkRe = /<a[^>]*href=["'](https?:\/\/(?:www\.)?jkanime\.net\/([a-z0-9\-]+)\/?)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    var lm;
+    while ((lm = linkRe.exec(html)) && items.length < 40) {
+      var h = lm[1];
+      var s = lm[2];
+      if (!s || seen[s] || /buscar|directorio|genero|categoria|ajax/.test(s)) continue;
+      var inner = lm[3] || '';
+      var tit = '';
+      var tm2 = />([^<]{2,80})</.exec(inner) || /alt=["']([^"']+)["']/.exec(inner);
+      if (tm2) tit = tm2[1].trim();
+      if (!tit) tit = s.replace(/-/g, ' ');
+      var im = '';
+      var im2 = /data-setbg=["']([^"']+)["']/.exec(inner) || /src=["']([^"']+)["']/.exec(inner);
+      if (im2) im = im2[1];
+      // buscar imagen un poco antes del enlace
+      if (!im) {
+        var before = html.substring(Math.max(0, lm.index - 400), lm.index);
+        var im3 = /data-setbg=["']([^"']+)["']/.exec(before) || /src=["']([^"']+\.(?:jpg|jpeg|png|webp)[^"']*)["']/i.exec(before);
+        if (im3) im = im3[1];
+      }
+      var item = mapItemFromSearch({ title: tit, url: h, image: im, status: '', type: 'Anime' });
+      if (item) {
+        seen[s] = true;
+        items.push(item);
+      }
+    }
+  }
+
+  return items;
+}
+
+async function search(args, config) {
+  var q = (args && (args.query || args.q)) || '';
+  q = String(q).trim();
+  if (!q) return { items: [] };
+
+  var items = [];
+  var seen = {};
+  var encoded = encodeURIComponent(q);
+
+  // Estructura actual: /buscar/{query}/1/ , /2/ , /3/
+  var pages = [1, 2, 3];
+  for (var pi = 0; pi < pages.length; pi++) {
+    var page = pages[pi];
+    var url = BASE + '/buscar/' + encoded + '/' + page + '/';
+    try {
+      var html = await fetchHtml(url);
+      // Si Cloudflare challenge, saltar
+      if (/Just a moment|cf-browser-verification|challenge-platform/i.test(html)) {
+        break;
+      }
+      var pageItems = parseAnimeItemsFromHtml(html);
+      for (var i = 0; i < pageItems.length; i++) {
+        var it = pageItems[i];
+        var slug = (it.extra && it.extra.jkanimeSlug) || slugFromUrl(it.id);
+        if (slug && !seen[slug]) {
+          seen[slug] = true;
+          items.push(it);
+        }
+      }
+      // Si la página devolvió pocos, no seguir
+      if (pageItems.length < 5) break;
+    } catch (e) {
+      break;
+    }
+  }
+
+  // Fallback: directorio (var animes = {...}) filtrado por nombre
   if (items.length === 0) {
     try {
       var dir = await fetchDirectorio({ page: 1, filtro: 'nombre' });
-      // filtrar localmente por query
       var ql = q.toLowerCase();
-      items = dir.items.filter(function (it) {
-        return (it.title || '').toLowerCase().indexOf(ql) >= 0;
+      var words = ql.split(/\s+/).filter(Boolean);
+      items = (dir.items || []).filter(function (it) {
+        var t = (it.title || '').toLowerCase();
+        return words.every(function (w) {
+          return t.indexOf(w) >= 0;
+        });
       });
+    } catch (e) {}
+  }
+
+  // Segundo fallback: buscar sin número de página
+  if (items.length === 0) {
+    try {
+      var html2 = await fetchHtml(BASE + '/buscar/' + encoded);
+      if (!/Just a moment|cf-browser-verification/i.test(html2)) {
+        items = parseAnimeItemsFromHtml(html2);
+      }
     } catch (e) {}
   }
 

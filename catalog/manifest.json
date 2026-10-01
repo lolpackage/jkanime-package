@@ -1,8 +1,8 @@
 {
   "id": "jkanime-catalog",
   "name": "JKAnime Catalog",
-  "version": "1.0.1",
-  "description": "Catálogo JKAnime. Tipos: anime, ovas, onas, películas, especiales. Géneros y filtros. IDs jkanime:slug. extra.tmdbId = URL del anime para que la fuente JKAnime resuelva. Temporadas/episodios en getMeta (pagination_episodes).",
+  "version": "1.0.2",
+  "description": "Catálogo JKAnime. Búsqueda con selectores actuales (anime__item, set-bg, /buscar/q/page/). Capítulos vía pagination_episodes. IDs jkanime:slug.",
   "logo": "https://cdn.jkdesu.com/assets/images/logo.png",
   "author": "Community",
   "types": ["catalog"],
