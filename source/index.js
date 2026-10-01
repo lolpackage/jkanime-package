@@ -1,10 +1,7 @@
 /**
  * Fuente JKAnime
  * getStreams(tmdbId, type, season, episode)
- *   - tmdbId = URL completa o slug de jkanime (lo pone el catálogo en extra.tmdbId)
- *   - season se ignora (siempre 1)
- *   - episode = número de episodio
- * Solo resuelve si el id pertenece a jkanime.net.
+ * extract(url) — resuelve embeds a HLS/MP4 (Voe, StreamWish, VidHide, Filemoon, Dood, OK.ru, etc.)
  */
 
 var BASE = 'https://jkanime.net';
@@ -26,10 +23,10 @@ function headers(extra) {
   return h;
 }
 
-async function httpGet(url) {
+async function httpGet(url, extraHeaders) {
   try {
     var res = await fetch(url, {
-      headers: headers(),
+      headers: headers(extraHeaders),
       redirect: 'follow',
     });
     if (!res.ok) return null;
@@ -52,31 +49,25 @@ function isJkAnimeId(id) {
   var s = String(id);
   if (s.indexOf('jkanime.net') >= 0) return true;
   if (s.indexOf('jkanime:') === 0) return true;
-  // slug puro (sin : y sin espacios raros)
   if (/^[a-z0-9][a-z0-9\-]*$/i.test(s) && s.indexOf('tmdb') < 0) return true;
   return false;
 }
 
 function episodeUrlFrom(tmdbId, episode) {
   var raw = String(tmdbId || '').trim();
-
-  // Ya es URL de episodio: https://jkanime.net/slug/12/
   if (/jkanime\.net\/[^\/]+\/\d+\/?/i.test(raw)) {
     return raw.replace(/\/?$/, '/');
   }
-
   var slug = '';
   if (raw.indexOf('jkanime:') === 0) {
     var parts = raw.split(':');
     slug = parts[1] || '';
-    // jkanime:slug:ep
     if (parts.length >= 3 && /^\d+$/.test(parts[2])) {
       episode = parseInt(parts[2], 10);
     }
   } else {
     slug = slugFromUrl(raw);
   }
-
   if (!slug) return null;
   var ep = parseInt(episode, 10) || 1;
   return BASE + '/' + slug + '/' + ep + '/';
@@ -92,7 +83,6 @@ function fixHost(url) {
 function b64decode(str) {
   try {
     if (typeof atob === 'function') return atob(str);
-    // fallback Node
     if (typeof Buffer !== 'undefined') {
       return Buffer.from(str, 'base64').toString('utf8');
     }
@@ -111,13 +101,18 @@ function langName(code) {
   return map[n] || 'Sub. Español';
 }
 
-/**
- * Extrae servidores de la página del episodio (misma lógica que ServidoresApi).
- */
+function hostName(url) {
+  try {
+    var m = /https?:\/\/(?:www\.)?([^\/]+)/i.exec(url);
+    return m ? m[1].split('.')[0] : 'Servidor';
+  } catch (e) {
+    return 'Servidor';
+  }
+}
+
 function extractServidores(html) {
   var temp = [];
 
-  // 1) video[N] = '...iframe src=...'
   var videoRe = /video\[(\d+)\]\s*=\s*([^;]+);/gi;
   var vm;
   while ((vm = videoRe.exec(html))) {
@@ -140,7 +135,6 @@ function extractServidores(html) {
     }
   }
 
-  // 2) var servers = [ {...}, ... ]
   var serversM = /var\s+servers\s*=\s*\[([\s\S]*?)\];/i.exec(html);
   if (serversM) {
     var serversJson = serversM[1]
@@ -169,25 +163,8 @@ function extractServidores(html) {
         var remote = server.remote || '';
         var name = server.server;
         var lang = langName(server.lang || '1');
-        var isVidHide =
-          /vidhide|vid hide|vidhidepro/i.test(name) ||
-          /vidhide|luluvdo|vidguard/i.test(remote);
-        var isStreamWish =
-          /streamwish|stream wish|flaswish|sfastwish/i.test(name) ||
-          /streamwish|flaswish|sfastwish/i.test(remote);
-
-        if ((isVidHide || isStreamWish) && remote) {
-          temp.push({
-            name: name,
-            url: fixHost(remote),
-            language: lang,
-          });
-        } else if (remote) {
-          temp.push({
-            name: name,
-            url: fixHost(remote),
-            language: lang,
-          });
+        if (remote) {
+          temp.push({ name: name, url: fixHost(remote), language: lang });
         } else if (server.slug) {
           temp.push({
             name: name,
@@ -199,7 +176,6 @@ function extractServidores(html) {
     }
   }
 
-  // 3) iframes sueltos en la página
   var iframeRe = /<iframe[^>]+src=["']([^"']+)["']/gi;
   var im;
   var seen = {};
@@ -209,20 +185,15 @@ function extractServidores(html) {
     src2 = fixHost(src2);
     if (seen[src2]) continue;
     if (
-      /streamwish|flaswish|vidhide|voe|filemoon|mp4upload|yourupload|ok\.ru|dood|mixdrop/i.test(
+      /streamwish|flaswish|sfastwish|vidhide|voe|filemoon|mp4upload|yourupload|ok\.ru|dood|mixdrop|uqload|goodstream|lulu|filelions|hlswish|wishfast|awish/i.test(
         src2
       )
     ) {
       seen[src2] = true;
-      temp.push({
-        name: hostName(src2),
-        url: src2,
-        language: 'Sub. Español',
-      });
+      temp.push({ name: hostName(src2), url: src2, language: 'Sub. Español' });
     }
   }
 
-  // Ordenar prioridad
   temp.sort(function (a, b) {
     function score(n) {
       var l = String(n || '').toLowerCase();
@@ -230,12 +201,13 @@ function extractServidores(html) {
       if (l.indexOf('servidor 2') >= 0) return 1;
       if (l.indexOf('streamwish') >= 0 || l.indexOf('stream wish') >= 0) return 2;
       if (l.indexOf('vidhide') >= 0 || l.indexOf('vid hide') >= 0) return 3;
+      if (l.indexOf('voe') >= 0) return 4;
+      if (l.indexOf('filemoon') >= 0) return 5;
       return 10;
     }
     return score(a.name) - score(b.name);
   });
 
-  // Deduplicar por URL
   var out = [];
   var seenUrl = {};
   for (var j = 0; j < temp.length; j++) {
@@ -247,57 +219,446 @@ function extractServidores(html) {
   return out;
 }
 
-function hostName(url) {
+// ═══════════════════════════════════════════════════════════
+// EXTRACTORES HLS (lógica Latinuvio: cdn_resolvers + embeds)
+// ═══════════════════════════════════════════════════════════
+
+function unpackEval(script) {
+  var m = String(script || '').match(
+    /\('([\s\S]+?)',\s*(\d+),\s*(\d+),\s*'([\s\S]+?)'\.split\('\|'\)/
+  );
+  if (!m) return null;
+  var chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  var radix = parseInt(m[2], 10);
+  var symtab = m[4].split('|');
+  function unbase(s) {
+    var v = 0;
+    for (var i = 0; i < s.length; i++) {
+      var idx = chars.indexOf(s[i]);
+      if (idx === -1) return NaN;
+      v = v * radix + idx;
+    }
+    return v;
+  }
+  return m[1].replace(/\b([0-9a-zA-Z]+)\b/g, function (w) {
+    var idx = unbase(w);
+    return !isNaN(idx) && idx < symtab.length && symtab[idx] ? symtab[idx] : w;
+  });
+}
+
+function extractM3u8(text) {
+  if (!text) return null;
+  var m =
+    text.match(/["']hls["']\s*:\s*["'](https?:\/\/[^"']+)["']/i) ||
+    text.match(/(?:file|src|source)\s*[:=]\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i) ||
+    text.match(/https?:\/\/[^\s"'<>\\]+\.m3u8[^\s"'<>\\]*/i);
+  if (!m) {
+    var mp4 = text.match(/https?:\/\/[^\s"'<>\\]+\.mp4[^\s"'<>\\]*/i);
+    return mp4 ? mp4[0].replace(/\\u0026/g, '&').replace(/\\\//g, '/') : null;
+  }
+  return (m[1] || m[0]).replace(/\\u0026/g, '&').replace(/\\\//g, '/');
+}
+
+function isPlayable(u) {
+  var s = String(u || '').toLowerCase();
+  return (
+    /\.m3u8(\?|$)/.test(s) ||
+    /\.mp4(\?|$)/.test(s) ||
+    /\.mpd(\?|$)/.test(s) ||
+    /\/hls2?\//.test(s) ||
+    /master\.m3u8/.test(s)
+  );
+}
+
+function domainOf(url) {
   try {
-    var m = /https?:\/\/(?:www\.)?([^\/]+)/i.exec(url);
-    return m ? m[1].split('.')[0] : 'Servidor';
+    var m = /https?:\/\/([^\/]+)/i.exec(url);
+    return m ? m[1].toLowerCase().replace(/^www\./, '') : '';
   } catch (e) {
-    return 'Servidor';
+    return '';
   }
 }
 
+function originOf(url) {
+  try {
+    var m = /^(https?:\/\/[^\/]+)/i.exec(url);
+    return m ? m[1] : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+async function resolveVoe(embedUrl) {
+  var html = await httpGet(embedUrl, { Referer: embedUrl });
+  if (!html) return null;
+  if (html.indexOf('window.location.href') >= 0 && html.length < 2000) {
+    var rm = html.match(/window\.location\.href\s*=\s*["']([^"']+)["']/i);
+    if (rm) return resolveVoe(rm[1]);
+  }
+  // VOE encrypted JSON (ROT13 + noise + b64 + shift -3 + reverse + b64)
+  var jm = html.match(/<script type="application\/json">([\s\S]*?)<\/script>/);
+  if (jm) {
+    try {
+      var enc = JSON.parse(jm[1].trim());
+      if (Array.isArray(enc)) enc = enc[0];
+      if (typeof enc === 'string') {
+        var d = enc.replace(/[a-zA-Z]/g, function (c) {
+          var code = c.charCodeAt(0);
+          var lim = c <= 'Z' ? 90 : 122;
+          var s = code + 13;
+          return String.fromCharCode(lim >= s ? s : s - 26);
+        });
+        ['@$', '^^', '~@', '%?', '*~', '!!', '#&'].forEach(function (n) {
+          d = d.split(n).join('');
+        });
+        var s1 = b64decode(d);
+        var sh = '';
+        for (var i = 0; i < s1.length; i++) sh += String.fromCharCode(s1.charCodeAt(i) - 3);
+        var data = JSON.parse(b64decode(sh.split('').reverse().join('')));
+        var u = data && (data.source || data.direct_access_url);
+        if (u) return { url: u, server: 'VOE', headers: { 'User-Agent': UA, Referer: embedUrl } };
+      }
+    } catch (e) {}
+  }
+  var m3 = extractM3u8(html);
+  if (m3) return { url: m3, server: 'VOE', headers: { 'User-Agent': UA, Referer: embedUrl } };
+  return null;
+}
+
+async function resolveStreamWish(embedUrl) {
+  var rawId = ((embedUrl.match(/\/(?:e|v|embed)\/([^\/.?]+)/i) || [])[1] || embedUrl.split('/').pop() || '').replace(/\.html$/, '');
+  if (!rawId) return null;
+  var host = originOf(embedUrl) || 'https://streamwish.to';
+  var mirrors = [
+    host,
+    'https://streamwish.to',
+    'https://strwish.com',
+    'https://flaswish.com',
+    'https://awish.pro',
+    'https://wishfast.top',
+    'https://hlswish.com',
+    'https://hglink.to',
+    'https://hanerix.com',
+  ];
+  for (var mi = 0; mi < mirrors.length; mi++) {
+    try {
+      var base = mirrors[mi];
+      var mirror = base + '/e/' + rawId;
+      var html = await httpGet(mirror, { Referer: mirror });
+      if (!html) continue;
+      var m3u8 = null;
+      var hash = html.match(/[0-9a-f]{32}/i);
+      if (hash) {
+        var dl =
+          originOf(mirror) +
+          '/dl?op=view&file_code=' +
+          rawId +
+          '&hash=' +
+          hash[0] +
+          '&embed=1&referer=&adb=1&hls4=1';
+        var t = await httpGet(dl, { Referer: mirror });
+        if (t) {
+          var mm = t.match(/https?:\/\/[^"']+\.m3u8[^"']*/);
+          if (mm) m3u8 = mm[0];
+        }
+      }
+      if (!m3u8) {
+        var pm = html.match(/eval\s*\(\s*function\s*\(p,a,c,k,e,[a-z]\)[\s\S]*?\.split\('\|'\)[^)]*\)\)/);
+        if (pm) {
+          var up = unpackEval(pm[0]);
+          if (up) m3u8 = extractM3u8(up);
+        }
+      }
+      if (!m3u8) {
+        var fm = html.match(/file\s*:\s*["']([^"']+\.m3u8[^"']*)["']/i);
+        if (fm) m3u8 = fm[1];
+      }
+      if (!m3u8) m3u8 = extractM3u8(html);
+      if (m3u8) {
+        return {
+          url: m3u8,
+          server: 'StreamWish',
+          headers: { 'User-Agent': UA, Referer: mirror, Origin: originOf(mirror) },
+        };
+      }
+    } catch (e) {}
+  }
+  return null;
+}
+
+async function resolveVidHide(embedUrl) {
+  var html = await httpGet(embedUrl, { Referer: originOf(embedUrl) + '/' });
+  if (!html) return null;
+  var block = html.match(/eval\s*\(\s*function\s*\(p,a,c,k,e,[rd]\)[\s\S]*?\.split\('\|'\)[^)]*\)\s*\)/);
+  if (block) {
+    var up = unpackEval(block[0]);
+    if (up) {
+      var hm = up.match(/"hls4"\s*:\s*"([^"]+)"/) || up.match(/"hls2"\s*:\s*"([^"]+)"/);
+      if (hm) {
+        var hls = hm[1];
+        var origin = originOf(embedUrl);
+        return {
+          url: hls.indexOf('http') === 0 ? hls : origin + hls,
+          server: 'VidHide',
+          headers: { 'User-Agent': UA, Referer: origin + '/' },
+        };
+      }
+      var m3u = extractM3u8(up);
+      if (m3u) return { url: m3u, server: 'VidHide', headers: { 'User-Agent': UA, Referer: embedUrl } };
+    }
+  }
+  var m3 = extractM3u8(html);
+  return m3 ? { url: m3, server: 'VidHide', headers: { 'User-Agent': UA, Referer: embedUrl } } : null;
+}
+
+async function resolveFilemoon(embedUrl) {
+  var html = await httpGet(embedUrl, { Referer: embedUrl });
+  if (!html) return null;
+  var m = extractM3u8(html);
+  if (m) return { url: m, server: 'Filemoon', headers: { 'User-Agent': UA, Referer: embedUrl } };
+  var evalMatch = html.match(/eval\s*\(\s*function\s*\(p,a,c,k/);
+  if (evalMatch) {
+    // take a larger chunk for unpack
+    var chunk = html.substring(evalMatch.index, evalMatch.index + 8000);
+    var up = unpackEval(chunk);
+    if (up) {
+      m = extractM3u8(up);
+      if (m) return { url: m, server: 'Filemoon', headers: { 'User-Agent': UA, Referer: embedUrl } };
+    }
+  }
+  return null;
+}
+
+async function resolveDood(embedUrl) {
+  var html = await httpGet(embedUrl, { Referer: embedUrl });
+  if (!html) return null;
+  // pass_md5 path
+  var pass = html.match(/\/pass_md5\/([^"'\\s]+)/i);
+  if (pass) {
+    try {
+      var passUrl = originOf(embedUrl) + '/pass_md5/' + pass[1];
+      var token = await httpGet(passUrl, { Referer: embedUrl });
+      if (token && token.indexOf('http') === 0) {
+        var finalUrl = token + (token.indexOf('?') >= 0 ? '&' : '?') + 'token=' + (pass[1].split('/').pop() || '') + '&expiry=' + Date.now();
+        // dood often returns path that needs domain
+        if (token.indexOf('http') !== 0) finalUrl = originOf(embedUrl) + token;
+        else finalUrl = token;
+        // classic dood: response is md5 path, append random + expiry
+        var doodDirect = token.trim();
+        if (doodDirect && doodDirect.indexOf('http') === 0) {
+          return {
+            url: doodDirect + (Math.random().toString(36).slice(2)) + '?token=' + (pass[1].split('/').pop() || '') + '&expiry=' + Date.now(),
+            server: 'Dood',
+            headers: { 'User-Agent': UA, Referer: originOf(embedUrl) + '/' },
+          };
+        }
+      }
+    } catch (e) {}
+  }
+  var m3 = extractM3u8(html);
+  return m3 ? { url: m3, server: 'Dood', headers: { 'User-Agent': UA, Referer: embedUrl } } : null;
+}
+
+async function resolveOkru(embedUrl) {
+  var html = await httpGet(embedUrl, { Referer: 'https://ok.ru/' });
+  if (!html) return null;
+  var m =
+    html.match(/data-module="OKVideo"[^>]*data-options="([^"]+)"/i) ||
+    html.match(/"videoSrc"\s*:\s*"([^"]+)"/i) ||
+    html.match(/https?:\\\/\\\/[^"']+\.m3u8[^"']*/i);
+  if (!m) {
+    var m3 = extractM3u8(html.replace(/\\\//g, '/'));
+    return m3 ? { url: m3, server: 'OK.ru', headers: { 'User-Agent': UA, Referer: 'https://ok.ru/' } } : null;
+  }
+  var raw = (m[1] || m[0] || '').replace(/&quot;/g, '"').replace(/\\\//g, '/');
+  try {
+    if (raw.charAt(0) === '{') {
+      var opt = JSON.parse(raw);
+      var flashvars = opt.flashvars || opt;
+      var meta = flashvars.metadata || flashvars.metadataUrl;
+      if (typeof meta === 'string' && meta.charAt(0) === '{') meta = JSON.parse(meta);
+      if (meta && meta.videos && meta.videos.length) {
+        var best = meta.videos[meta.videos.length - 1];
+        var url = (best.url || best).replace(/\\\//g, '/');
+        if (url) return { url: url, server: 'OK.ru', headers: { 'User-Agent': UA, Referer: 'https://ok.ru/' } };
+      }
+      if (meta && meta.hlsMasterPlaylistUrl) {
+        return { url: meta.hlsMasterPlaylistUrl.replace(/\\\//g, '/'), server: 'OK.ru', headers: { 'User-Agent': UA, Referer: 'https://ok.ru/' } };
+      }
+    }
+  } catch (e) {}
+  var m3b = extractM3u8(raw);
+  return m3b ? { url: m3b, server: 'OK.ru', headers: { 'User-Agent': UA, Referer: 'https://ok.ru/' } } : null;
+}
+
+async function resolveUqload(embedUrl) {
+  var html = await httpGet(embedUrl);
+  if (!html) return null;
+  var sm = html.match(/sources\s*:\s*\[([^\]]+)\]/);
+  if (!sm) {
+    var pm = html.match(/eval\s*\(\s*function\s*\(p,a,c,k,e,[dr]\)[\s\S]*?\.split\('\|'\)[^)]*\)\)/);
+    if (pm) {
+      var up = unpackEval(pm[0]);
+      if (up) sm = up.match(/sources\s*:\s*\[([^\]]+)\]/);
+    }
+  }
+  if (!sm) return null;
+  var url = extractM3u8(sm[1]) || (sm[1].match(/https?:\/\/[^\s"'<>]+/) || [])[0];
+  if (!url || url.indexOf('http') !== 0) return null;
+  return { url: url, server: 'Uqload', headers: { Referer: 'https://uqload.com/', 'User-Agent': UA } };
+}
+
+async function resolveGoodstream(embedUrl) {
+  var html = await httpGet(embedUrl);
+  if (!html) return null;
+  var fm = html.match(/file\s*:\s*"(https?:\/\/[^"]+\.m3u8[^"]*)"/i);
+  if (fm) return { url: fm[1], server: 'GoodStream', headers: { Referer: 'https://goodstream.one/', Origin: 'https://goodstream.one', 'User-Agent': UA } };
+  var m3 = extractM3u8(html);
+  return m3 ? { url: m3, server: 'GoodStream', headers: { Referer: 'https://goodstream.one/', 'User-Agent': UA } } : null;
+}
+
+async function resolveMixdrop(embedUrl) {
+  var html = await httpGet(embedUrl, { Referer: embedUrl });
+  if (!html) return null;
+  var evalMatch = html.match(/eval\s*\(\s*function\s*\(p,a,c,k/);
+  if (evalMatch) {
+    var chunk = html.substring(evalMatch.index, evalMatch.index + 12000);
+    var up = unpackEval(chunk);
+    if (up) {
+      var m = up.match(/(?:MDCore\.wurl|wurl)\s*=\s*["']([^"']+)["']/i) || up.match(/https?:\/\/[^"'\s]+\.mp4[^"'\s]*/i);
+      if (m) {
+        var u = m[1] || m[0];
+        if (u.indexOf('//') === 0) u = 'https:' + u;
+        return { url: u, server: 'Mixdrop', headers: { 'User-Agent': UA, Referer: originOf(embedUrl) + '/' } };
+      }
+    }
+  }
+  return null;
+}
+
+async function resolveMp4Upload(embedUrl) {
+  var html = await httpGet(embedUrl);
+  if (!html) return null;
+  var m = html.match(/player\.src\s*\(\s*["']([^"']+)["']\s*\)/i) || html.match(/src\s*:\s*["'](https?:\/\/[^"']+\.mp4[^"']*)["']/i);
+  if (m) return { url: m[1], server: 'Mp4Upload', headers: { 'User-Agent': UA, Referer: embedUrl } };
+  var evalMatch = html.match(/eval\s*\(\s*function\s*\(p,a,c,k/);
+  if (evalMatch) {
+    var up = unpackEval(html.substring(evalMatch.index, evalMatch.index + 10000));
+    if (up) {
+      var m2 = extractM3u8(up) || (up.match(/https?:\/\/[^"'\s]+\.mp4[^"'\s]*/) || [])[0];
+      if (m2) return { url: m2, server: 'Mp4Upload', headers: { 'User-Agent': UA, Referer: embedUrl } };
+    }
+  }
+  return null;
+}
+
+async function resolveGeneric(embedUrl) {
+  var html = await httpGet(embedUrl, { Referer: embedUrl });
+  if (!html) return null;
+  var m = extractM3u8(html);
+  if (m) return { url: m, server: hostName(embedUrl), headers: { 'User-Agent': UA, Referer: embedUrl } };
+  var evalMatch = html.match(/eval\s*\(\s*function\s*\(p,a,c,k/);
+  if (evalMatch) {
+    var up = unpackEval(html.substring(evalMatch.index, evalMatch.index + 12000));
+    if (up) {
+      m = extractM3u8(up);
+      if (m) return { url: m, server: hostName(embedUrl), headers: { 'User-Agent': UA, Referer: embedUrl } };
+    }
+  }
+  return null;
+}
+
 /**
- * Extractor simple de embeds conocidos (devuelve URL directa si es posible).
- * La app también puede usar extract() por separado.
+ * Dispatcher: elige extractor según el host del embed.
+ */
+async function resolveEmbed(embedUrl) {
+  if (!embedUrl || String(embedUrl).indexOf('http') !== 0) return null;
+  var u = String(embedUrl).toLowerCase();
+  var h = domainOf(embedUrl);
+  var s = null;
+
+  try {
+    if (u.indexOf('voe') >= 0 || h.indexOf('voe') >= 0 || h.indexOf('marissa') >= 0) {
+      s = await resolveVoe(embedUrl);
+    } else if (
+      u.indexOf('streamwish') >= 0 ||
+      u.indexOf('strwish') >= 0 ||
+      u.indexOf('flaswish') >= 0 ||
+      u.indexOf('sfastwish') >= 0 ||
+      u.indexOf('wishfast') >= 0 ||
+      u.indexOf('hlswish') >= 0 ||
+      u.indexOf('awish') >= 0 ||
+      u.indexOf('filelions') >= 0 ||
+      u.indexOf('wishembed') >= 0 ||
+      u.indexOf('hglink') >= 0 ||
+      u.indexOf('embedwish') >= 0
+    ) {
+      s = await resolveStreamWish(embedUrl);
+    } else if (
+      u.indexOf('vidhide') >= 0 ||
+      u.indexOf('vidhidepro') >= 0 ||
+      u.indexOf('dintezuvio') >= 0 ||
+      u.indexOf('minochinos') >= 0 ||
+      u.indexOf('luluvdo') >= 0 ||
+      u.indexOf('vidguard') >= 0
+    ) {
+      s = await resolveVidHide(embedUrl);
+    } else if (u.indexOf('filemoon') >= 0 || u.indexOf('moonembed') >= 0 || h.indexOf('moon') >= 0) {
+      s = await resolveFilemoon(embedUrl);
+    } else if (u.indexOf('dood') >= 0 || u.indexOf('ds2play') >= 0) {
+      s = await resolveDood(embedUrl);
+    } else if (u.indexOf('ok.ru') >= 0 || u.indexOf('odnoklassniki') >= 0) {
+      s = await resolveOkru(embedUrl);
+    } else if (u.indexOf('uqload') >= 0 || u.indexOf('oneupload') >= 0) {
+      s = await resolveUqload(embedUrl);
+    } else if (u.indexOf('goodstream') >= 0) {
+      s = await resolveGoodstream(embedUrl);
+    } else if (u.indexOf('mixdrop') >= 0) {
+      s = await resolveMixdrop(embedUrl);
+    } else if (u.indexOf('mp4upload') >= 0) {
+      s = await resolveMp4Upload(embedUrl);
+    } else {
+      s = await resolveGeneric(embedUrl);
+    }
+  } catch (e) {
+    s = null;
+  }
+
+  if (s && s.url && s.url !== embedUrl && isPlayable(s.url)) return s;
+  // último intento genérico si el especializado falló
+  if (!s) {
+    try {
+      s = await resolveGeneric(embedUrl);
+    } catch (e) {}
+  }
+  if (s && s.url && isPlayable(s.url)) return s;
+  return null;
+}
+
+/**
+ * API pública extract(url) — usada por la app y por getStreams.
  */
 async function extract(url, opts) {
   opts = opts || {};
   var u = String(url || '').trim();
   if (!u) return null;
 
-  // Ya es directo
-  if (/\.m3u8(\?|$)/i.test(u) || /\.mp4(\?|$)/i.test(u)) {
+  if (isPlayable(u)) {
     return { url: u, headers: { Referer: BASE + '/', 'User-Agent': UA } };
   }
 
-  var html = await httpGet(u);
-  if (!html) return null;
-
-  // m3u8 / mp4 en el HTML
-  var m3 =
-    /https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/i.exec(html) ||
-    /file\s*:\s*["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/i.exec(html) ||
-    /source\s*:\s*["'](https?:\/\/[^"']+)["']/i.exec(html);
-  if (m3) {
+  var resolved = await resolveEmbed(u);
+  if (resolved && resolved.url) {
     return {
-      url: m3[1] || m3[0],
-      headers: { Referer: u, 'User-Agent': UA },
+      url: resolved.url,
+      headers: resolved.headers || { Referer: u, 'User-Agent': UA },
+      server: resolved.server,
     };
   }
-
-  var mp4 = /https?:\/\/[^"'\s]+\.mp4[^"'\s]*/i.exec(html);
-  if (mp4) {
-    return {
-      url: mp4[0],
-      headers: { Referer: u, 'User-Agent': UA },
-    };
-  }
-
   return null;
 }
 
 async function getStreams(tmdbId, type, season, episode) {
-  // Solo responder si el id es de JKAnime
   if (!isJkAnimeId(tmdbId)) {
     return [];
   }
@@ -314,37 +675,36 @@ async function getStreams(tmdbId, type, season, episode) {
   for (var i = 0; i < servers.length; i++) {
     var s = servers[i];
     var streamUrl = s.url;
+    var streamHeaders = { Referer: epUrl, 'User-Agent': UA };
     var isHls = /\.m3u8/i.test(streamUrl);
-    var isDirect = isHls || /\.mp4/i.test(streamUrl);
+    var isDirect = isPlayable(streamUrl);
+    var serverLabel = s.name;
 
-    // Intentar resolver embed → directo
     if (!isDirect) {
       try {
         var resolved = await extract(streamUrl);
         if (resolved && resolved.url) {
           streamUrl = resolved.url;
+          if (resolved.headers) streamHeaders = resolved.headers;
+          if (resolved.server) serverLabel = resolved.server + ' · ' + s.name;
           isHls = /\.m3u8/i.test(streamUrl);
-          isDirect = true;
+          isDirect = isPlayable(streamUrl);
         }
       } catch (e) {}
     }
 
+    // Solo devolver streams directos (HLS/MP4). Si no se pudo extraer, se omite.
+    if (!isDirect) continue;
+
     streams.push({
       url: streamUrl,
-      title: s.name + (s.language ? ' · ' + s.language : ''),
+      title: serverLabel + (s.language ? ' · ' + s.language : ''),
       quality: 'HD',
       provider: 'JKAnime',
-      name: s.name,
+      name: serverLabel,
       language: s.language || 'es',
-      headers: {
-        Referer: epUrl,
-        'User-Agent': UA,
-      },
+      headers: streamHeaders,
       isHls: isHls,
-      // Si no es directo, la app puede usar extract de nuevo
-      behaviorHints: isDirect
-        ? undefined
-        : { notWebReady: true, proxyHeaders: { request: { Referer: epUrl } } },
     });
   }
 

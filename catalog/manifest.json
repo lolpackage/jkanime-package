@@ -1,8 +1,8 @@
 {
   "id": "jkanime-catalog",
   "name": "JKAnime Catalog",
-  "version": "1.1.0",
-  "description": "Catálogo JKAnime. Tipos y géneros propios. IDs jkanime:slug. tmdbId/url_personalizada = URL del capítulo.",
+  "version": "1.0.0",
+  "description": "Catálogo JKAnime. Tipos: anime, ovas, onas, películas, especiales. Géneros y filtros. IDs jkanime:slug. extra.tmdbId = URL del anime para que la fuente JKAnime resuelva. Temporadas/episodios en getMeta.",
   "logo": "https://cdn.jkdesu.com/assets/images/logo.png",
   "author": "Community",
   "types": ["catalog"],
@@ -20,74 +20,6 @@
       "discover": true,
       "search": true,
       "contentPage": true
-    },
-    "types": [
-      { "id": "animes", "label": "Anime" },
-      { "id": "ovas", "label": "OVAs" },
-      { "id": "onas", "label": "ONAs" },
-      { "id": "peliculas", "label": "Películas" },
-      { "id": "especiales", "label": "Especiales" },
-      { "id": "donghua", "label": "Donghua" }
-    ],
-    "genres": {
-      "animes": [
-        { "id": "accion", "name": "Acción" },
-        { "id": "artes-marciales", "name": "Artes marciales" },
-        { "id": "aventura", "name": "Aventura" },
-        { "id": "ciencia-ficcion", "name": "Ciencia ficción" },
-        { "id": "comedia", "name": "Comedia" },
-        { "id": "demonios", "name": "Demonios" },
-        { "id": "deportes", "name": "Deportes" },
-        { "id": "drama", "name": "Drama" },
-        { "id": "ecchi", "name": "Ecchi" },
-        { "id": "escolares", "name": "Escolares" },
-        { "id": "fantasia", "name": "Fantasía" },
-        { "id": "harem", "name": "Harem" },
-        { "id": "historico", "name": "Histórico" },
-        { "id": "magia", "name": "Magia" },
-        { "id": "mecha", "name": "Mecha" },
-        { "id": "misterio", "name": "Misterio" },
-        { "id": "musica", "name": "Música" },
-        { "id": "psicologico", "name": "Psicológico" },
-        { "id": "romance", "name": "Romance" },
-        { "id": "seinen", "name": "Seinen" },
-        { "id": "shoujo", "name": "Shoujo" },
-        { "id": "shounen", "name": "Shounen" },
-        { "id": "sobrenatural", "name": "Sobrenatural" },
-        { "id": "superpoderes", "name": "Superpoderes" },
-        { "id": "suspenso", "name": "Suspenso" },
-        { "id": "terror", "name": "Terror" }
-      ],
-      "ovas": [
-        { "id": "accion", "name": "Acción" },
-        { "id": "comedia", "name": "Comedia" },
-        { "id": "drama", "name": "Drama" },
-        { "id": "fantasia", "name": "Fantasía" },
-        { "id": "romance", "name": "Romance" }
-      ],
-      "onas": [
-        { "id": "accion", "name": "Acción" },
-        { "id": "comedia", "name": "Comedia" },
-        { "id": "fantasia", "name": "Fantasía" }
-      ],
-      "peliculas": [
-        { "id": "accion", "name": "Acción" },
-        { "id": "aventura", "name": "Aventura" },
-        { "id": "comedia", "name": "Comedia" },
-        { "id": "drama", "name": "Drama" },
-        { "id": "fantasia", "name": "Fantasía" },
-        { "id": "terror", "name": "Terror" }
-      ],
-      "especiales": [
-        { "id": "comedia", "name": "Comedia" },
-        { "id": "drama", "name": "Drama" }
-      ],
-      "donghua": [
-        { "id": "accion", "name": "Acción" },
-        { "id": "aventura", "name": "Aventura" },
-        { "id": "fantasia", "name": "Fantasía" },
-        { "id": "artes-marciales", "name": "Artes marciales" }
-      ]
     }
   }
 }
