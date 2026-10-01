@@ -1,9 +1,9 @@
 {
   "id": "jkanime",
   "name": "JKAnime",
-  "version": "1.0.2",
-  "description": "Catálogo y fuente JKAnime. Fix búsqueda (títulos/posters) + capítulos. IDs jkanime:slug; tmdbId = URL del anime.",
-  "logo": "https://cdn.jkdesu.com/assets/images/logo.png",
+  "version": "1.1.0",
+  "description": "Catálogo y fuente JKAnime. Lógica 1:1 con scrapers Dart (buscar, directorio, content_api). CDN cdn.jkdesa.com.",
+  "logo": "https://cdn.jkdesa.com/assets/images/logo.png",
   "author": "Community",
   "tags": ["anime", "español", "jkanime", "sub"],
   "addons": [
