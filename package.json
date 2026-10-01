@@ -1,11 +1,16 @@
 {
   "id": "jkanime",
   "name": "JKAnime",
-  "version": "1.0.0",
-  "description": "Catálogo y fuente JKAnime (jkanime.net). Anime, OVAs, ONAs, películas y especiales. IDs jkanime:slug; tmdbId = URL del anime para que solo esta fuente resuelva streams.",
+  "version": "1.1.0",
+  "description": "Catálogo y fuente JKAnime. Temporadas/episodios en getMeta; url_personalizada = enlace del capítulo; géneros reales por tipo.",
   "logo": "https://cdn.jkdesu.com/assets/images/logo.png",
   "author": "Community",
-  "tags": ["anime", "español", "jkanime", "sub"],
+  "tags": [
+    "anime",
+    "español",
+    "jkanime",
+    "sub"
+  ],
   "addons": [
     {
       "id": "jkanime-catalog",
