@@ -1,5 +1,5 @@
 /**
- * Addon catálogo JKAnime v1.2.0
+ * Addon catálogo JKAnime v1.1.2
  * Lógica alineada 1:1 con los scrapers Dart de la app:
  *   - buscar.dart      → search
  *   - directorio.dart  → discover / getHome fallback
@@ -407,74 +407,15 @@ async function discover(args, config) {
 
 function extractIdsFromPage(html, animeUrl) {
   var csrf = '';
-  var csrfM =
-    /name=["']csrf-token["']\s+content=["']([^"']+)["']/i.exec(html) ||
-    /csrf[_-]?token["']?\s*[:=]\s*["']([^"']+)["']/i.exec(html) ||
-    /<meta[^>]+name=["']csrf-token["'][^>]+content=["']([^"']+)/i.exec(html);
+  var csrfM = /name=["']csrf-token["']\s+content=["']([^"']+)["']/i.exec(html);
   if (csrfM) csrf = csrfM[1].trim();
 
   var animeId = 0;
-  var idPatterns = [
-    /data-anime=["'](\d+)["']/i,
-    /data-id=["'](\d+)["']/i,
-    /anime_id["']?\s*[:=]\s*["']?(\d+)/i,
-    /animeId["']?\s*[:=]\s*["']?(\d+)/i,
-    /\/ajax\/episodes\/(\d+)\//i,
-    /episodes\/(\d+)\//i,
-  ];
-  for (var i = 0; i < idPatterns.length; i++) {
-    var idM = idPatterns[i].exec(html);
-    if (idM) {
-      animeId = parseInt(idM[1], 10) || 0;
-      if (animeId) break;
-    }
-  }
+  var idM = /data-anime=["'](\d+)["']/i.exec(html);
+  if (idM) animeId = parseInt(idM[1], 10) || 0;
 
   var slug = slugFromUrl(animeUrl);
   return { csrf: csrf, animeId: animeId, slug: slug };
-}
-
-/** Fallback: enlaces /slug/N/ en el HTML de la ficha */
-function scrapeEpisodesFromHtml(html, slug) {
-  var eps = [];
-  var seen = {};
-  if (!slug) return eps;
-  var re = new RegExp(
-    '(?:href=["\']|/)' +
-      slug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-      '/(\\d+)/?',
-    'gi'
-  );
-  var m;
-  while ((m = re.exec(html)) !== null) {
-    var num = parseInt(m[1], 10);
-    if (!num || seen[num]) continue;
-    seen[num] = true;
-    var epUrl = BASE + '/' + slug + '/' + num + '/';
-    eps.push({
-      id: 'jkanime:' + slug + ':' + num,
-      title: 'Capítulo ' + num,
-      name: 'Capítulo ' + num,
-      seasonNumber: 1,
-      episodeNumber: num,
-      number: num,
-      overview: '',
-      poster: CDN + '/assets/images/animes/image/' + slug + '.jpg',
-      still: CDN + '/assets/images/animes/image/' + slug + '.jpg',
-      airDate: null,
-      url: epUrl,
-      extra: {
-        jkanimeUrl: epUrl,
-        tmdbId: epUrl,
-        url_personalizada: epUrl,
-        source: 'jkanime',
-      },
-    });
-  }
-  eps.sort(function (a, b) {
-    return (a.episodeNumber || 0) - (b.episodeNumber || 0);
-  });
-  return eps;
 }
 
 function parseAnimeInfo(html, url) {
@@ -652,7 +593,6 @@ function buildEpisodesFromTotal(slug, total) {
         jkanimeUrl: epUrl,
         tmdbId: epUrl,
         url_personalizada: epUrl,
-        source: 'jkanime',
       },
     });
   }
@@ -707,71 +647,42 @@ async function getMeta(args, config) {
   };
 
   // Temporadas / episodios (anime = 1 temporada)
-  // Siempre intentamos listar capítulos aunque no haya tmdbId numérico:
-  // cada ep lleva extra.tmdbId = URL directa para la fuente.
-  var episodes = [];
-  if (type === 'series' || type === 'movie') {
-    if (type === 'series') {
-      try {
-        episodes = await fetchEpisodesAjax(
-          ids.animeId,
-          ids.csrf,
-          jkUrl,
-          ''
-        );
-      } catch (e) {}
+  if (type === 'series') {
+    var episodes = [];
+    try {
+      episodes = await fetchEpisodesAjax(
+        ids.animeId,
+        ids.csrf,
+        jkUrl,
+        ''
+      );
+    } catch (e) {}
 
-      if (episodes.length === 0) {
-        episodes = scrapeEpisodesFromHtml(html, slug);
-      }
+    if (episodes.length === 0 && info.totalEpisodes > 0) {
+      episodes = buildEpisodesFromTotal(slug, info.totalEpisodes);
+    }
 
-      if (episodes.length === 0 && info.totalEpisodes > 0) {
-        episodes = buildEpisodesFromTotal(slug, info.totalEpisodes);
-      }
+    if (episodes.length === 0) {
+      var countM = /data-total=["'](\d+)["']/i.exec(html);
+      var total = countM ? parseInt(countM[1], 10) : 0;
+      if (total > 0) episodes = buildEpisodesFromTotal(slug, total);
+    }
 
-      if (episodes.length === 0) {
-        var countM =
-          /data-total=["'](\d+)["']/i.exec(html) ||
-          /data-episodes=["'](\d+)["']/i.exec(html) ||
-          /(?:Episodios?|Episodes?)\s*:?\s*<[^>]*>\s*(\d+)/i.exec(html);
-        var total = countM ? parseInt(countM[1], 10) : 0;
-        if (total > 0) episodes = buildEpisodesFromTotal(slug, total);
-      }
-
-      // Si aún no hay lista, al menos 1 cap para no dejar la ficha vacía
-      if (episodes.length === 0) {
-        episodes = buildEpisodesFromTotal(slug, 1);
-      }
-
-      var seasonObj = {
+    item.extra.seasons = [
+      {
         seasonNumber: 1,
         season_number: 1,
         name: 'Temporada 1',
-        episodeCount: episodes.length,
-        episode_count: episodes.length,
+        episodeCount: episodes.length || info.totalEpisodes || 0,
+        episode_count: episodes.length || info.totalEpisodes || 0,
         overview: info.overview || '',
         airDate: null,
         poster: poster,
         episodes: episodes,
-      };
-      item.extra.seasons = [seasonObj];
-      item.seasons = [seasonObj];
-      item.extra.episodeCount = episodes.length;
-      item.extra.episodes = episodes;
-    }
-
-    // Película: un solo "capítulo" = la propia URL del anime
-    if (type === 'movie') {
-      item.extra.url_personalizada = jkUrl;
-      item.extra.tmdbId = jkUrl;
-      item.extra.jkanimeUrl = jkUrl;
-    }
+      },
+    ];
+    item.extra.episodeCount = episodes.length || info.totalEpisodes || 0;
   }
-
-  // Asegurar enlace para servidores aunque sea serie (página base)
-  if (!item.extra.tmdbId) item.extra.tmdbId = jkUrl;
-  if (!item.extra.url_personalizada) item.extra.url_personalizada = jkUrl;
-  if (!item.extra.jkanimeUrl) item.extra.jkanimeUrl = jkUrl;
 
   return { item: item };
 }
