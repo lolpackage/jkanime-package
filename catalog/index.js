@@ -1,5 +1,5 @@
 /**
- * Addon catálogo JKAnime v1.1.1
+ * Addon catálogo JKAnime v1.1.2
  * Lógica alineada 1:1 con los scrapers Dart de la app:
  *   - buscar.dart      → search
  *   - directorio.dart  → discover / getHome fallback
@@ -10,8 +10,7 @@
  */
 
 var BASE = 'https://jkanime.net';
-var CDN = 'https://cdn.jkdesu.com';
-var CDN_ALT = 'https://cdn.jkdesa.com';
+var CDN = 'https://cdn.jkdesa.com';
 var UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
@@ -86,29 +85,16 @@ function absImg(u) {
   if (!u) return null;
   u = String(u).trim();
   if (!u || u === 'null' || u === 'undefined') return null;
-  // Ya es URL absoluta
-  if (u.indexOf('http') === 0) {
-    // Normalizar dominio viejo/nuevo
-    u = u.replace('cdn.jkdesa.com', 'cdn.jkdesu.com');
-    return u;
-  }
+  // URL absoluta: dejar tal cual (solo normalizar protocolo //)
   if (u.indexOf('//') === 0) return 'https:' + u;
-  // data-setbg a veces trae path completo del CDN sin protocolo
-  if (u.indexOf('cdn.jkdesu.com') >= 0 || u.indexOf('cdn.jkdesa.com') >= 0) {
-    return 'https://' + u.replace(/^\/+/, '').replace('cdn.jkdesa.com', 'cdn.jkdesu.com');
-  }
+  if (u.indexOf('http://') === 0 || u.indexOf('https://') === 0) return u;
+  // Path relativo
   if (u.charAt(0) === '/') return CDN + u;
-  if (u.indexOf('animes/') === 0 || u.indexOf('assets/') === 0) {
+  if (u.indexOf('assets/') === 0 || u.indexOf('animes/') === 0) {
     return CDN + '/' + u;
   }
-  // Nombre de archivo suelto (thumb de episodio)
-  if (/\.(jpg|jpeg|png|webp)$/i.test(u)) {
-    if (u.indexOf('image_thumb') >= 0 || u.indexOf('video') >= 0) {
-      return CDN + '/assets/images/animes/video/image_thumb/' + u.replace(/^.*\//, '');
-    }
-    return CDN + '/assets/images/animes/image/' + u.replace(/^.*\//, '');
-  }
-  return CDN + '/' + u;
+  // Solo nombre de archivo → poster del anime
+  return CDN + '/assets/images/animes/image/' + u.replace(/^.*\//, '');
 }
 
 function mapTipoToType(tipo) {
@@ -132,11 +118,9 @@ function makeItem(opts) {
   var type = mapTipoToType(tipo);
   var jkUrl = animeUrl(slug);
   var poster = absImg(opts.image || opts.poster || '');
-  if (!poster || poster.indexOf('http') !== 0) {
+  if (!poster) {
     poster = CDN + '/assets/images/animes/image/' + slug + '.jpg';
   }
-  // También probar ruta corta usada por el sitio
-  // (si el slug poster 404, la UI muestra placeholder)
   return {
     id: 'jkanime:' + slug,
     title: title,
