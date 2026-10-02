@@ -1,5 +1,5 @@
 /**
- * Addon catálogo JKAnime v1.1.2
+ * Addon catálogo JKAnime v1.2.0
  * Lógica alineada 1:1 con los scrapers Dart de la app:
  *   - buscar.dart      → search
  *   - directorio.dart  → discover / getHome fallback

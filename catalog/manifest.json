@@ -1,15 +1,1016 @@
 {
   "id": "jkanime-catalog",
   "name": "JKAnime Catalog",
-  "version": "1.1.2",
-  "description": "Catálogo JKAnime alineado con scrapers Dart. Búsqueda (page_directorio/anime__item), directorio (var animes), meta+caps (POST /ajax/episodes + CSRF). CDN jkdesa.",
+  "version": "1.2.0",
+  "apiVersion": 1,
+  "minAppVersion": "1.0.0",
+  "description": "Catálogo JKAnime: anime, OVAs, ONAs, películas, especiales y donghua. Tipos y géneros para Catálogos.",
   "logo": "https://cdn.jkdesa.com/assets/images/logo.png",
   "author": "Community",
-  "types": [
-    "catalog"
-  ],
+  "homepage": "https://jkanime.net",
+  "color": "#7C4DFF",
   "type": "catalog",
   "entry": "index.js",
+  "mode": "vod",
+  "capabilities": [
+    "home",
+    "search",
+    "discover",
+    "meta"
+  ],
+  "mediaKinds": [
+    {
+      "id": "animes",
+      "label": "Anime"
+    },
+    {
+      "id": "ovas",
+      "label": "OVAs"
+    },
+    {
+      "id": "onas",
+      "label": "ONAs"
+    },
+    {
+      "id": "peliculas",
+      "label": "Películas"
+    },
+    {
+      "id": "especiales",
+      "label": "Especiales"
+    },
+    {
+      "id": "donghua",
+      "label": "Donghua"
+    }
+  ],
+  "genresByKind": {
+    "animes": [
+      {
+        "id": "accion",
+        "name": "Accion"
+      },
+      {
+        "id": "artes-marciales",
+        "name": "Artes Marciales"
+      },
+      {
+        "id": "aventura",
+        "name": "Aventura"
+      },
+      {
+        "id": "carreras",
+        "name": "Carreras"
+      },
+      {
+        "id": "ciencia-ficcion",
+        "name": "Ciencia ficción"
+      },
+      {
+        "id": "comedia",
+        "name": "Comedia"
+      },
+      {
+        "id": "demencia",
+        "name": "Demencia"
+      },
+      {
+        "id": "demonios",
+        "name": "Demonios"
+      },
+      {
+        "id": "deportes",
+        "name": "Deportes"
+      },
+      {
+        "id": "drama",
+        "name": "Drama"
+      },
+      {
+        "id": "ecchi",
+        "name": "Ecchi"
+      },
+      {
+        "id": "escolares",
+        "name": "Escolares"
+      },
+      {
+        "id": "espacial",
+        "name": "Espacial"
+      },
+      {
+        "id": "fantasia",
+        "name": "Fantasia"
+      },
+      {
+        "id": "harem",
+        "name": "Harem"
+      },
+      {
+        "id": "historico",
+        "name": "Historico"
+      },
+      {
+        "id": "infantil",
+        "name": "Infantil"
+      },
+      {
+        "id": "josei",
+        "name": "Josei"
+      },
+      {
+        "id": "juegos",
+        "name": "Juegos"
+      },
+      {
+        "id": "magia",
+        "name": "Magia"
+      },
+      {
+        "id": "mecha",
+        "name": "Mecha"
+      },
+      {
+        "id": "militar",
+        "name": "Militar"
+      },
+      {
+        "id": "misterio",
+        "name": "Misterio"
+      },
+      {
+        "id": "musica",
+        "name": "Musica"
+      },
+      {
+        "id": "parodia",
+        "name": "Parodia"
+      },
+      {
+        "id": "policia",
+        "name": "Policia"
+      },
+      {
+        "id": "psicologico",
+        "name": "Psicologico"
+      },
+      {
+        "id": "romance",
+        "name": "Romance"
+      },
+      {
+        "id": "samurai",
+        "name": "Samurai"
+      },
+      {
+        "id": "seinen",
+        "name": "Seinen"
+      },
+      {
+        "id": "shoujo",
+        "name": "Shoujo"
+      },
+      {
+        "id": "shounen",
+        "name": "Shounen"
+      },
+      {
+        "id": "sobrenatural",
+        "name": "Sobrenatural"
+      },
+      {
+        "id": "superpoderes",
+        "name": "Superpoderes"
+      },
+      {
+        "id": "suspenso",
+        "name": "Suspenso"
+      },
+      {
+        "id": "terror",
+        "name": "Terror"
+      },
+      {
+        "id": "vampiros",
+        "name": "Vampiros"
+      },
+      {
+        "id": "yaoi",
+        "name": "Yaoi"
+      },
+      {
+        "id": "yuri",
+        "name": "Yuri"
+      }
+    ],
+    "ovas": [
+      {
+        "id": "accion",
+        "name": "Accion"
+      },
+      {
+        "id": "artes-marciales",
+        "name": "Artes Marciales"
+      },
+      {
+        "id": "aventura",
+        "name": "Aventura"
+      },
+      {
+        "id": "carreras",
+        "name": "Carreras"
+      },
+      {
+        "id": "ciencia-ficcion",
+        "name": "Ciencia ficción"
+      },
+      {
+        "id": "comedia",
+        "name": "Comedia"
+      },
+      {
+        "id": "demencia",
+        "name": "Demencia"
+      },
+      {
+        "id": "demonios",
+        "name": "Demonios"
+      },
+      {
+        "id": "deportes",
+        "name": "Deportes"
+      },
+      {
+        "id": "drama",
+        "name": "Drama"
+      },
+      {
+        "id": "ecchi",
+        "name": "Ecchi"
+      },
+      {
+        "id": "escolares",
+        "name": "Escolares"
+      },
+      {
+        "id": "espacial",
+        "name": "Espacial"
+      },
+      {
+        "id": "fantasia",
+        "name": "Fantasia"
+      },
+      {
+        "id": "harem",
+        "name": "Harem"
+      },
+      {
+        "id": "historico",
+        "name": "Historico"
+      },
+      {
+        "id": "infantil",
+        "name": "Infantil"
+      },
+      {
+        "id": "josei",
+        "name": "Josei"
+      },
+      {
+        "id": "juegos",
+        "name": "Juegos"
+      },
+      {
+        "id": "magia",
+        "name": "Magia"
+      },
+      {
+        "id": "mecha",
+        "name": "Mecha"
+      },
+      {
+        "id": "militar",
+        "name": "Militar"
+      },
+      {
+        "id": "misterio",
+        "name": "Misterio"
+      },
+      {
+        "id": "musica",
+        "name": "Musica"
+      },
+      {
+        "id": "parodia",
+        "name": "Parodia"
+      },
+      {
+        "id": "policia",
+        "name": "Policia"
+      },
+      {
+        "id": "psicologico",
+        "name": "Psicologico"
+      },
+      {
+        "id": "romance",
+        "name": "Romance"
+      },
+      {
+        "id": "samurai",
+        "name": "Samurai"
+      },
+      {
+        "id": "seinen",
+        "name": "Seinen"
+      },
+      {
+        "id": "shoujo",
+        "name": "Shoujo"
+      },
+      {
+        "id": "shounen",
+        "name": "Shounen"
+      },
+      {
+        "id": "sobrenatural",
+        "name": "Sobrenatural"
+      },
+      {
+        "id": "superpoderes",
+        "name": "Superpoderes"
+      },
+      {
+        "id": "suspenso",
+        "name": "Suspenso"
+      },
+      {
+        "id": "terror",
+        "name": "Terror"
+      },
+      {
+        "id": "vampiros",
+        "name": "Vampiros"
+      },
+      {
+        "id": "yaoi",
+        "name": "Yaoi"
+      },
+      {
+        "id": "yuri",
+        "name": "Yuri"
+      }
+    ],
+    "onas": [
+      {
+        "id": "accion",
+        "name": "Accion"
+      },
+      {
+        "id": "artes-marciales",
+        "name": "Artes Marciales"
+      },
+      {
+        "id": "aventura",
+        "name": "Aventura"
+      },
+      {
+        "id": "carreras",
+        "name": "Carreras"
+      },
+      {
+        "id": "ciencia-ficcion",
+        "name": "Ciencia ficción"
+      },
+      {
+        "id": "comedia",
+        "name": "Comedia"
+      },
+      {
+        "id": "demencia",
+        "name": "Demencia"
+      },
+      {
+        "id": "demonios",
+        "name": "Demonios"
+      },
+      {
+        "id": "deportes",
+        "name": "Deportes"
+      },
+      {
+        "id": "drama",
+        "name": "Drama"
+      },
+      {
+        "id": "ecchi",
+        "name": "Ecchi"
+      },
+      {
+        "id": "escolares",
+        "name": "Escolares"
+      },
+      {
+        "id": "espacial",
+        "name": "Espacial"
+      },
+      {
+        "id": "fantasia",
+        "name": "Fantasia"
+      },
+      {
+        "id": "harem",
+        "name": "Harem"
+      },
+      {
+        "id": "historico",
+        "name": "Historico"
+      },
+      {
+        "id": "infantil",
+        "name": "Infantil"
+      },
+      {
+        "id": "josei",
+        "name": "Josei"
+      },
+      {
+        "id": "juegos",
+        "name": "Juegos"
+      },
+      {
+        "id": "magia",
+        "name": "Magia"
+      },
+      {
+        "id": "mecha",
+        "name": "Mecha"
+      },
+      {
+        "id": "militar",
+        "name": "Militar"
+      },
+      {
+        "id": "misterio",
+        "name": "Misterio"
+      },
+      {
+        "id": "musica",
+        "name": "Musica"
+      },
+      {
+        "id": "parodia",
+        "name": "Parodia"
+      },
+      {
+        "id": "policia",
+        "name": "Policia"
+      },
+      {
+        "id": "psicologico",
+        "name": "Psicologico"
+      },
+      {
+        "id": "romance",
+        "name": "Romance"
+      },
+      {
+        "id": "samurai",
+        "name": "Samurai"
+      },
+      {
+        "id": "seinen",
+        "name": "Seinen"
+      },
+      {
+        "id": "shoujo",
+        "name": "Shoujo"
+      },
+      {
+        "id": "shounen",
+        "name": "Shounen"
+      },
+      {
+        "id": "sobrenatural",
+        "name": "Sobrenatural"
+      },
+      {
+        "id": "superpoderes",
+        "name": "Superpoderes"
+      },
+      {
+        "id": "suspenso",
+        "name": "Suspenso"
+      },
+      {
+        "id": "terror",
+        "name": "Terror"
+      },
+      {
+        "id": "vampiros",
+        "name": "Vampiros"
+      },
+      {
+        "id": "yaoi",
+        "name": "Yaoi"
+      },
+      {
+        "id": "yuri",
+        "name": "Yuri"
+      }
+    ],
+    "peliculas": [
+      {
+        "id": "accion",
+        "name": "Accion"
+      },
+      {
+        "id": "artes-marciales",
+        "name": "Artes Marciales"
+      },
+      {
+        "id": "aventura",
+        "name": "Aventura"
+      },
+      {
+        "id": "carreras",
+        "name": "Carreras"
+      },
+      {
+        "id": "ciencia-ficcion",
+        "name": "Ciencia ficción"
+      },
+      {
+        "id": "comedia",
+        "name": "Comedia"
+      },
+      {
+        "id": "demencia",
+        "name": "Demencia"
+      },
+      {
+        "id": "demonios",
+        "name": "Demonios"
+      },
+      {
+        "id": "deportes",
+        "name": "Deportes"
+      },
+      {
+        "id": "drama",
+        "name": "Drama"
+      },
+      {
+        "id": "ecchi",
+        "name": "Ecchi"
+      },
+      {
+        "id": "escolares",
+        "name": "Escolares"
+      },
+      {
+        "id": "espacial",
+        "name": "Espacial"
+      },
+      {
+        "id": "fantasia",
+        "name": "Fantasia"
+      },
+      {
+        "id": "harem",
+        "name": "Harem"
+      },
+      {
+        "id": "historico",
+        "name": "Historico"
+      },
+      {
+        "id": "infantil",
+        "name": "Infantil"
+      },
+      {
+        "id": "josei",
+        "name": "Josei"
+      },
+      {
+        "id": "juegos",
+        "name": "Juegos"
+      },
+      {
+        "id": "magia",
+        "name": "Magia"
+      },
+      {
+        "id": "mecha",
+        "name": "Mecha"
+      },
+      {
+        "id": "militar",
+        "name": "Militar"
+      },
+      {
+        "id": "misterio",
+        "name": "Misterio"
+      },
+      {
+        "id": "musica",
+        "name": "Musica"
+      },
+      {
+        "id": "parodia",
+        "name": "Parodia"
+      },
+      {
+        "id": "policia",
+        "name": "Policia"
+      },
+      {
+        "id": "psicologico",
+        "name": "Psicologico"
+      },
+      {
+        "id": "romance",
+        "name": "Romance"
+      },
+      {
+        "id": "samurai",
+        "name": "Samurai"
+      },
+      {
+        "id": "seinen",
+        "name": "Seinen"
+      },
+      {
+        "id": "shoujo",
+        "name": "Shoujo"
+      },
+      {
+        "id": "shounen",
+        "name": "Shounen"
+      },
+      {
+        "id": "sobrenatural",
+        "name": "Sobrenatural"
+      },
+      {
+        "id": "superpoderes",
+        "name": "Superpoderes"
+      },
+      {
+        "id": "suspenso",
+        "name": "Suspenso"
+      },
+      {
+        "id": "terror",
+        "name": "Terror"
+      },
+      {
+        "id": "vampiros",
+        "name": "Vampiros"
+      },
+      {
+        "id": "yaoi",
+        "name": "Yaoi"
+      },
+      {
+        "id": "yuri",
+        "name": "Yuri"
+      }
+    ],
+    "especiales": [
+      {
+        "id": "accion",
+        "name": "Accion"
+      },
+      {
+        "id": "artes-marciales",
+        "name": "Artes Marciales"
+      },
+      {
+        "id": "aventura",
+        "name": "Aventura"
+      },
+      {
+        "id": "carreras",
+        "name": "Carreras"
+      },
+      {
+        "id": "ciencia-ficcion",
+        "name": "Ciencia ficción"
+      },
+      {
+        "id": "comedia",
+        "name": "Comedia"
+      },
+      {
+        "id": "demencia",
+        "name": "Demencia"
+      },
+      {
+        "id": "demonios",
+        "name": "Demonios"
+      },
+      {
+        "id": "deportes",
+        "name": "Deportes"
+      },
+      {
+        "id": "drama",
+        "name": "Drama"
+      },
+      {
+        "id": "ecchi",
+        "name": "Ecchi"
+      },
+      {
+        "id": "escolares",
+        "name": "Escolares"
+      },
+      {
+        "id": "espacial",
+        "name": "Espacial"
+      },
+      {
+        "id": "fantasia",
+        "name": "Fantasia"
+      },
+      {
+        "id": "harem",
+        "name": "Harem"
+      },
+      {
+        "id": "historico",
+        "name": "Historico"
+      },
+      {
+        "id": "infantil",
+        "name": "Infantil"
+      },
+      {
+        "id": "josei",
+        "name": "Josei"
+      },
+      {
+        "id": "juegos",
+        "name": "Juegos"
+      },
+      {
+        "id": "magia",
+        "name": "Magia"
+      },
+      {
+        "id": "mecha",
+        "name": "Mecha"
+      },
+      {
+        "id": "militar",
+        "name": "Militar"
+      },
+      {
+        "id": "misterio",
+        "name": "Misterio"
+      },
+      {
+        "id": "musica",
+        "name": "Musica"
+      },
+      {
+        "id": "parodia",
+        "name": "Parodia"
+      },
+      {
+        "id": "policia",
+        "name": "Policia"
+      },
+      {
+        "id": "psicologico",
+        "name": "Psicologico"
+      },
+      {
+        "id": "romance",
+        "name": "Romance"
+      },
+      {
+        "id": "samurai",
+        "name": "Samurai"
+      },
+      {
+        "id": "seinen",
+        "name": "Seinen"
+      },
+      {
+        "id": "shoujo",
+        "name": "Shoujo"
+      },
+      {
+        "id": "shounen",
+        "name": "Shounen"
+      },
+      {
+        "id": "sobrenatural",
+        "name": "Sobrenatural"
+      },
+      {
+        "id": "superpoderes",
+        "name": "Superpoderes"
+      },
+      {
+        "id": "suspenso",
+        "name": "Suspenso"
+      },
+      {
+        "id": "terror",
+        "name": "Terror"
+      },
+      {
+        "id": "vampiros",
+        "name": "Vampiros"
+      },
+      {
+        "id": "yaoi",
+        "name": "Yaoi"
+      },
+      {
+        "id": "yuri",
+        "name": "Yuri"
+      }
+    ],
+    "donghua": [
+      {
+        "id": "accion",
+        "name": "Accion"
+      },
+      {
+        "id": "artes-marciales",
+        "name": "Artes Marciales"
+      },
+      {
+        "id": "aventura",
+        "name": "Aventura"
+      },
+      {
+        "id": "carreras",
+        "name": "Carreras"
+      },
+      {
+        "id": "ciencia-ficcion",
+        "name": "Ciencia ficción"
+      },
+      {
+        "id": "comedia",
+        "name": "Comedia"
+      },
+      {
+        "id": "demencia",
+        "name": "Demencia"
+      },
+      {
+        "id": "demonios",
+        "name": "Demonios"
+      },
+      {
+        "id": "deportes",
+        "name": "Deportes"
+      },
+      {
+        "id": "drama",
+        "name": "Drama"
+      },
+      {
+        "id": "ecchi",
+        "name": "Ecchi"
+      },
+      {
+        "id": "escolares",
+        "name": "Escolares"
+      },
+      {
+        "id": "espacial",
+        "name": "Espacial"
+      },
+      {
+        "id": "fantasia",
+        "name": "Fantasia"
+      },
+      {
+        "id": "harem",
+        "name": "Harem"
+      },
+      {
+        "id": "historico",
+        "name": "Historico"
+      },
+      {
+        "id": "infantil",
+        "name": "Infantil"
+      },
+      {
+        "id": "josei",
+        "name": "Josei"
+      },
+      {
+        "id": "juegos",
+        "name": "Juegos"
+      },
+      {
+        "id": "magia",
+        "name": "Magia"
+      },
+      {
+        "id": "mecha",
+        "name": "Mecha"
+      },
+      {
+        "id": "militar",
+        "name": "Militar"
+      },
+      {
+        "id": "misterio",
+        "name": "Misterio"
+      },
+      {
+        "id": "musica",
+        "name": "Musica"
+      },
+      {
+        "id": "parodia",
+        "name": "Parodia"
+      },
+      {
+        "id": "policia",
+        "name": "Policia"
+      },
+      {
+        "id": "psicologico",
+        "name": "Psicologico"
+      },
+      {
+        "id": "romance",
+        "name": "Romance"
+      },
+      {
+        "id": "samurai",
+        "name": "Samurai"
+      },
+      {
+        "id": "seinen",
+        "name": "Seinen"
+      },
+      {
+        "id": "shoujo",
+        "name": "Shoujo"
+      },
+      {
+        "id": "shounen",
+        "name": "Shounen"
+      },
+      {
+        "id": "sobrenatural",
+        "name": "Sobrenatural"
+      },
+      {
+        "id": "superpoderes",
+        "name": "Superpoderes"
+      },
+      {
+        "id": "suspenso",
+        "name": "Suspenso"
+      },
+      {
+        "id": "terror",
+        "name": "Terror"
+      },
+      {
+        "id": "vampiros",
+        "name": "Vampiros"
+      },
+      {
+        "id": "yaoi",
+        "name": "Yaoi"
+      },
+      {
+        "id": "yuri",
+        "name": "Yuri"
+      }
+    ]
+  },
+  "hosts": [
+    "jkanime.net",
+    "*.jkanime.net",
+    "cdn.jkdesa.com"
+  ],
+  "permissions": [
+    "network"
+  ],
+  "download": false,
+  "nsfw": false,
+  "discoverable": true,
+  "tags": [
+    "anime",
+    "español",
+    "jkanime",
+    "sub"
+  ],
   "resources": [
     "catalog",
     "meta",
@@ -23,20 +1024,12 @@
   ],
   "supportedTypes": [
     "series",
-    "movie"
+    "movie",
+    "tv"
   ],
   "contentLanguage": [
     "es",
     "ja"
   ],
-  "extra": {
-    "provider": "js",
-    "language": "es",
-    "supports": {
-      "home": true,
-      "discover": true,
-      "search": true,
-      "contentPage": true
-    }
-  }
+  "defaultCategory": "animes"
 }
