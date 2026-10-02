@@ -1,11 +1,16 @@
 {
   "id": "jkanime",
   "name": "JKAnime",
-  "version": "1.0.1",
-  "description": "Catálogo y fuente JKAnime (jkanime.net). Anime, OVAs, ONAs, películas y especiales. IDs jkanime:slug; tmdbId = URL del anime para que solo esta fuente resuelva streams. Fix capítulos vía /ajax/pagination_episodes/.",
+  "version": "1.1.1",
+  "description": "Catálogo y fuente JKAnime. Lógica 1:1 con scrapers Dart (buscar, directorio, content_api). CDN cdn.jkdesa.com.",
   "logo": "https://cdn.jkdesu.com/assets/images/logo.png",
   "author": "Community",
-  "tags": ["anime", "español", "jkanime", "sub"],
+  "tags": [
+    "anime",
+    "español",
+    "jkanime",
+    "sub"
+  ],
   "addons": [
     {
       "id": "jkanime-catalog",
