@@ -1,30 +1,17 @@
 {
   "id": "jkanime-source",
   "name": "JKAnime",
-  "version": "1.1.0",
+  "version": "1.0.0",
   "description": "Fuente JKAnime. getStreams recibe tmdbId = URL o slug de jkanime.net. Solo resuelve cuando el id/tmdbId pertenece a JKAnime.",
-  "logo": "https://cdn.jkdesa.com/assets/images/logo.png",
+  "logo": "https://cdn.jkdesu.com/assets/images/logo.png",
   "author": "Community",
-  "types": [
-    "source"
-  ],
+  "types": ["source"],
   "type": "source",
   "entry": "index.js",
-  "resources": [
-    "stream"
-  ],
-  "exports": [
-    "getStreams",
-    "extract"
-  ],
-  "supportedTypes": [
-    "series",
-    "movie"
-  ],
-  "contentLanguage": [
-    "es",
-    "ja"
-  ],
+  "resources": ["stream"],
+  "exports": ["getStreams", "extract"],
+  "supportedTypes": ["series", "movie"],
+  "contentLanguage": ["es", "ja"],
   "extra": {
     "provider": "js",
     "style": "nuvio-js",

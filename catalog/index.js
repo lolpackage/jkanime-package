@@ -1,16 +1,15 @@
 /**
- * Addon catálogo JKAnime v1.1.0
- * Lógica alineada 1:1 con los scrapers Dart de la app:
- *   - buscar.dart      → search
- *   - directorio.dart  → discover / getHome fallback
- *   - content_api.dart → getMeta + episodios (POST /ajax/episodes/ + CSRF)
- *
- * IDs: jkanime:{slug}
- * extra.tmdbId = URL completa del anime (para que solo la fuente JKAnime resuelva)
+ * Addon catálogo JKAnime v1.0
+ * - Lista / busca en jkanime.net
+ * - IDs: jkanime:slug  (type series|movie)
+ * - extra.tmdbId = URL completa del anime  → la app lo pasa a getStreams
+ *   así SOLO esta fuente resuelve (no hay id numérico TMDB)
+ * - getMeta: ficha + extra.seasons (1 temporada con N episodios)
+ * - discover: tipos (animes, ovas, onas, peliculas, especiales) + géneros
  */
 
 var BASE = 'https://jkanime.net';
-var CDN = 'https://cdn.jkdesa.com';
+var CDN = 'https://cdn.jkdesu.com';
 var UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
@@ -32,8 +31,6 @@ var TIPOS = [
   { id: 'especiales', label: 'Especiales' },
 ];
 
-// ─── HTTP ────────────────────────────────────────────────
-
 function headers(extra) {
   var h = {
     'User-Agent': UA,
@@ -49,17 +46,27 @@ function headers(extra) {
   return h;
 }
 
-async function fetchHtml(url, extraHeaders) {
-  var res = await fetch(url, { headers: headers(extraHeaders) });
+async function fetchHtml(url) {
+  var res = await fetch(url, { headers: headers() });
   if (!res.ok) throw new Error('HTTP ' + res.status + ' → ' + url);
   return await res.text();
 }
 
-// ─── UTILS ───────────────────────────────────────────────
+async function fetchJson(url, opts) {
+  opts = opts || {};
+  var res = await fetch(url, {
+    method: opts.method || 'GET',
+    headers: headers(opts.headers),
+    body: opts.body || undefined,
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status + ' → ' + url);
+  return await res.json();
+}
 
 function slugFromUrl(url) {
   if (!url) return '';
   var s = String(url).trim();
+  // https://jkanime.net/slug/  → slug
   s = s.replace(/^https?:\/\/(www\.)?jkanime\.net\//i, '');
   s = s.replace(/\/+$/, '');
   s = s.split('/')[0];
@@ -84,13 +91,9 @@ function absUrl(u) {
 function absImg(u) {
   if (!u) return null;
   u = String(u).trim();
-  if (!u || u === 'null' || u === 'undefined') return null;
   if (u.indexOf('http') === 0) return u;
   if (u.indexOf('//') === 0) return 'https:' + u;
   if (u.charAt(0) === '/') return CDN + u;
-  if (u.indexOf('animes/') === 0 || u.indexOf('assets/') === 0) {
-    return CDN + '/' + u;
-  }
   return CDN + '/' + u;
 }
 
@@ -100,36 +103,62 @@ function mapTipoToType(tipo) {
   return 'series';
 }
 
-function clean(text) {
-  if (!text) return '';
-  return String(text).replace(/\s+/g, ' ').trim();
+function mapItemFromDirectorio(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  var title = String(raw.title || raw.short_title || '').trim();
+  if (!title) return null;
+  var url = absUrl(raw.url || '');
+  var slug = slugFromUrl(url);
+  if (!slug) return null;
+  var tipo = String(raw.tipo || raw.type || 'Anime');
+  var type = mapTipoToType(tipo);
+  var poster = absImg(raw.image || '');
+  var overview = String(raw.synopsis || '').trim();
+  var status = String(raw.status || raw.estado || '').trim();
+
+  var id = 'jkanime:' + slug;
+  var jkUrl = animeUrl(slug);
+
+  return {
+    id: id,
+    title: title,
+    type: type,
+    overview: overview,
+    poster: poster,
+    genres: [],
+    year: null,
+    rating: null,
+    extra: {
+      source: 'jkanime',
+      jkanimeSlug: slug,
+      jkanimeUrl: jkUrl,
+      // CLAVE: la app usa tmdbId para getStreams; aquí va la URL del anime
+      tmdbId: jkUrl,
+      mediaType: type === 'movie' ? 'movie' : 'tv',
+      tipo: tipo,
+      status: status,
+    },
+  };
 }
 
-// ─── MAPEO DE ÍTEMS (formato que espera la app) ──────────
-
-function makeItem(opts) {
-  var slug = opts.slug || slugFromUrl(opts.url || '');
-  if (!slug) return null;
-  var title = clean(opts.title) || slug.replace(/-/g, ' ');
-  var tipo = opts.tipo || opts.type || 'Anime';
+function mapItemFromSearch(node) {
+  // node ya es { title, url, image, status, type, data_g }
+  var title = String(node.title || '').trim();
+  var url = absUrl(node.url || '');
+  var slug = slugFromUrl(url);
+  if (!title || !slug) return null;
+  var tipo = String(node.type || 'Anime');
   var type = mapTipoToType(tipo);
   var jkUrl = animeUrl(slug);
-  var poster = absImg(opts.image || opts.poster || '');
-  if (!poster) {
-    poster = CDN + '/assets/images/animes/image/' + slug + '.jpg';
-  }
   return {
     id: 'jkanime:' + slug,
     title: title,
-    name: title,
     type: type,
-    overview: clean(opts.overview || opts.synopsis || ''),
-    poster: poster,
-    posterUrl: poster,
-    image: poster,
-    genres: opts.genres || [],
-    year: opts.year || null,
-    rating: opts.rating || null,
+    overview: '',
+    poster: absImg(node.image || ''),
+    genres: [],
+    year: null,
+    rating: null,
     extra: {
       source: 'jkanime',
       jkanimeSlug: slug,
@@ -137,14 +166,38 @@ function makeItem(opts) {
       tmdbId: jkUrl,
       mediaType: type === 'movie' ? 'movie' : 'tv',
       tipo: tipo,
-      status: clean(opts.status || ''),
-      animeId: opts.animeId || null,
+      status: String(node.status || ''),
     },
   };
 }
 
-// ─── DIRECTORIO (var animes = {...}) — igual que directorio.dart ──
+function mapItemFromHomeCard(url, image, title, tipo, status) {
+  var slug = slugFromUrl(url);
+  if (!slug || !title) return null;
+  var type = mapTipoToType(tipo);
+  var jkUrl = animeUrl(slug);
+  return {
+    id: 'jkanime:' + slug,
+    title: String(title).trim(),
+    type: type,
+    overview: '',
+    poster: absImg(image),
+    genres: [],
+    year: null,
+    rating: null,
+    extra: {
+      source: 'jkanime',
+      jkanimeSlug: slug,
+      jkanimeUrl: jkUrl,
+      tmdbId: jkUrl,
+      mediaType: type === 'movie' ? 'movie' : 'tv',
+      tipo: String(tipo || ''),
+      status: String(status || ''),
+    },
+  };
+}
 
+// ─── DIRECTORIO (JSON embebido) ───────────────────────────
 async function fetchDirectorio(opts) {
   opts = opts || {};
   var page = opts.page || 1;
@@ -159,18 +212,8 @@ async function fetchDirectorio(opts) {
   var url = BASE + '/directorio' + (params.length ? '?' + params.join('&') : '');
   var html = await fetchHtml(url);
 
-  // var animes = {...};
   var m = html.match(/var\s+animes\s*=\s*(\{[\s\S]*?\});/i);
-  if (!m) {
-    // Fallback: scrape HTML de tarjetas
-    var htmlItems = parseSearchHtml(html);
-    return {
-      items: htmlItems,
-      currentPage: page,
-      lastPage: page,
-      total: htmlItems.length,
-    };
-  }
+  if (!m) return { items: [], currentPage: 1, lastPage: 1, total: 0 };
 
   var decoded;
   try {
@@ -182,17 +225,7 @@ async function fetchDirectorio(opts) {
   var data = decoded.data || [];
   var items = [];
   for (var i = 0; i < data.length; i++) {
-    var raw = data[i];
-    if (!raw || typeof raw !== 'object') continue;
-    var it = makeItem({
-      title: raw.title || raw.short_title || '',
-      url: raw.url || '',
-      image: raw.image || '',
-      tipo: raw.tipo || raw.type || 'Anime',
-      status: raw.status || raw.estado || '',
-      overview: raw.synopsis || '',
-      slug: slugFromUrl(raw.url || ''),
-    });
+    var it = mapItemFromDirectorio(data[i]);
     if (it) items.push(it);
   }
 
@@ -204,126 +237,83 @@ async function fetchDirectorio(opts) {
   };
 }
 
-// ─── BÚSQUEDA — igual que buscar.dart ────────────────────
-// Selectores: div.page_directorio div.anime__item
-//   h5 a → título + href
-//   div.anime__item__pic[data-setbg] → imagen
-//   div.anime__item__text ul li → status / tipo
+// ─── HOME (scraping ligero) ───────────────────────────────
+function extractAttr(html, tagOpen, attr) {
+  // helper muy simple
+  var re = new RegExp(attr + '=["\']([^"\']+)["\']', 'i');
+  var m = re.exec(tagOpen);
+  return m ? m[1] : '';
+}
 
-function parseSearchHtml(html) {
-  var items = [];
-  var seen = {};
-  if (!html) return items;
+async function parseHomeRows(html) {
+  var rows = [];
 
-  // Cortar por cada anime__item
-  var re =
-    /<div[^>]*class="[^"]*anime__item[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*anime__item|<\/div>\s*<\/div>\s*<\/div>|$)/gi;
-  var block;
-  while ((block = re.exec(html))) {
-    var chunk = block[0];
+  // Hero / recientes – cards genéricos con enlaces a anime
+  // Top list (upto / lower)
+  function collectCards(sectionLabel, classHint) {
+    var items = [];
+    // Busca bloques tipo div.toplist o anime__item
+    var re = /<div[^>]*class="[^"]*(?:toplist|anime__item)[^"]*"[^>]*>([\s\S]*?)<\/div>\s*(?:<\/div>)?/gi;
+    var block;
+    var seen = {};
+    while ((block = re.exec(html)) && items.length < 24) {
+      var chunk = block[0];
+      var hrefM = /href=["'](https?:\/\/jkanime\.net\/[^"']+)["']/i.exec(chunk);
+      if (!hrefM) hrefM = /href=["'](\/[^"']+)["']/i.exec(chunk);
+      if (!hrefM) continue;
+      var href = absUrl(hrefM[1]);
+      var slug = slugFromUrl(href);
+      if (!slug || seen[slug]) continue;
+      // evitar enlaces a episodio /buscar /directorio
+      if (/\/(episodio|buscar|directorio|genero|horario)\b/i.test(href)) continue;
+      if (slug.indexOf('?') >= 0) continue;
 
-    // h5 a (igual que BuscarApi)
-    var linkM =
-      /<h5[^>]*>\s*<a[^>]*href=["']([^"']+)["'][^>]*>([^<]*)/i.exec(chunk) ||
-      /<a[^>]*href=["']([^"']*jkanime\.net[^"']*|\/[a-z0-9\-]+\/?)["'][^>]*>([^<]*)/i.exec(chunk);
-    if (!linkM) continue;
-
-    var href = absUrl(linkM[1]);
-    var title = clean(linkM[2]);
-    var slug = slugFromUrl(href);
-    if (!slug || seen[slug]) continue;
-    if (/\/(buscar|directorio|genero|categoria|ajax)\b/i.test(href)) continue;
-
-    // Imagen: div.anime__item__pic data-setbg o style url()
-    var image = '';
-    var picM =
-      /class=["'][^"']*anime__item__pic[^"']*["'][^>]*data-setbg=["']([^"']+)["']/i.exec(chunk) ||
-      /data-setbg=["']([^"']+)["']/i.exec(chunk);
-    if (picM) {
-      image = picM[1];
-    } else {
-      var styleM = /style=["'][^"']*url\(\s*["']?([^"')]+)["']?\s*\)/i.exec(chunk);
-      if (styleM) image = styleM[1];
-      else {
-        var srcM = /<img[^>]*src=["']([^"']+)["']/i.exec(chunk);
-        if (srcM) image = srcM[1];
+      var imgM = /src=["']([^"']+)["']/i.exec(chunk);
+      var titleM =
+        /<(?:h5|h4|h3)[^>]*class="[^"]*card-title[^"]*"[^>]*>\s*<a[^>]*>([^<]+)/i.exec(chunk) ||
+        /alt=["']([^"']+)["']/i.exec(chunk) ||
+        /title=["']([^"']+)["']/i.exec(chunk);
+      var title = titleM ? titleM[1].trim() : slug.replace(/-/g, ' ');
+      var it = mapItemFromHomeCard(href, imgM ? imgM[1] : '', title, 'Anime', '');
+      if (it) {
+        seen[slug] = true;
+        items.push(it);
       }
     }
-
-    // Status / tipo desde ul li
-    var status = '';
-    var tipo = 'Anime';
-    var liRe = /<li[^>]*>([^<]+)/gi;
-    var lis = [];
-    var lm;
-    while ((lm = liRe.exec(chunk))) {
-      lis.push(clean(lm[1]));
-    }
-    if (lis.length > 0) status = lis[0];
-    if (lis.length > 1) tipo = lis[1];
-
-    if (!title) title = slug.replace(/-/g, ' ');
-
-    var it = makeItem({
-      title: title,
-      url: href,
-      image: image,
-      tipo: tipo,
-      status: status,
-      slug: slug,
-    });
-    if (it) {
-      seen[slug] = true;
-      items.push(it);
+    if (items.length) {
+      rows.push({ id: 'jkanime-' + classHint, title: sectionLabel, items: items });
     }
   }
 
-  return items;
-}
+  collectCards('Top anime', 'top');
+  collectCards('Recientes', 'recent');
 
-async function search(args, config) {
-  var q = (args && (args.query || args.q)) || '';
-  q = String(q).trim();
-  if (!q) return { items: [] };
-
-  var encoded = encodeURIComponent(q);
-  // Igual que buscar.dart: /buscar/{query}  (sin número de página)
-  var url = BASE + '/buscar/' + encoded;
-
-  var items = [];
-  try {
-    var html = await fetchHtml(url);
-    if (/Just a moment|cf-browser-verification|challenge-platform/i.test(html)) {
-      // Cloudflare: intentar directorio como fallback
-    } else {
-      items = parseSearchHtml(html);
-    }
-  } catch (e) {}
-
-  // Fallback: directorio filtrado por nombre
-  if (items.length === 0) {
+  // Si no hubo suficiente, rellenar con directorio
+  if (rows.length === 0 || (rows[0] && rows[0].items.length < 6)) {
     try {
-      var dir = await fetchDirectorio({ page: 1, filtro: 'nombre' });
-      var ql = q.toLowerCase();
-      var words = ql.split(/\s+/).filter(Boolean);
-      items = (dir.items || []).filter(function (it) {
-        var t = (it.title || '').toLowerCase();
-        return words.every(function (w) {
-          return t.indexOf(w) >= 0;
+      var dir = await fetchDirectorio({ page: 1, tipo: 'animes' });
+      if (dir.items.length) {
+        rows.unshift({
+          id: 'jkanime-animes',
+          title: 'Últimos animes',
+          items: dir.items.slice(0, 24),
         });
-      });
+      }
     } catch (e) {}
   }
 
-  return { items: items };
+  return rows;
 }
-
-// ─── HOME ────────────────────────────────────────────────
 
 async function getHome(args, config) {
   var rows = [];
 
-  // Filas por tipo desde directorio (más fiable que scrape del home)
+  try {
+    var html = await fetchHtml(BASE + '/');
+    rows = await parseHomeRows(html);
+  } catch (e) {}
+
+  // Filas por tipo
   var tiposHome = [
     { tipo: 'animes', title: 'Anime' },
     { tipo: 'ovas', title: 'OVAs' },
@@ -335,12 +325,18 @@ async function getHome(args, config) {
   for (var i = 0; i < tiposHome.length; i++) {
     try {
       var d = await fetchDirectorio({ page: 1, tipo: tiposHome[i].tipo });
-      if (d.items && d.items.length) {
-        rows.push({
-          id: 'jkanime-' + tiposHome[i].tipo,
-          title: tiposHome[i].title,
-          items: d.items.slice(0, 20),
+      if (d.items.length) {
+        // evitar duplicar si ya está en home scrape
+        var exists = rows.some(function (r) {
+          return r.id === 'jkanime-' + tiposHome[i].tipo;
         });
+        if (!exists) {
+          rows.push({
+            id: 'jkanime-' + tiposHome[i].tipo,
+            title: tiposHome[i].title,
+            items: d.items.slice(0, 20),
+          });
+        }
       }
     } catch (e) {}
   }
@@ -348,7 +344,7 @@ async function getHome(args, config) {
   // Donghua
   try {
     var dong = await fetchDirectorio({ page: 1, categoria: 'donghua' });
-    if (dong.items && dong.items.length) {
+    if (dong.items.length) {
       rows.push({
         id: 'jkanime-donghua',
         title: 'Donghua',
@@ -360,92 +356,195 @@ async function getHome(args, config) {
   return { rows: rows };
 }
 
-// ─── DISCOVER ────────────────────────────────────────────
+async function search(args, config) {
+  var q = (args && (args.query || args.q)) || '';
+  q = String(q).trim();
+  if (!q) return { items: [] };
+
+  var url = BASE + '/buscar/' + encodeURIComponent(q);
+  var html = await fetchHtml(url);
+
+  var items = [];
+  var seen = {};
+
+  // div.page_directorio div.anime__item
+  var re = /<div[^>]*class="[^"]*anime__item[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*class="[^"]*anime__item|$)/gi;
+  var block;
+  while ((block = re.exec(html))) {
+    var chunk = block[0];
+    var linkM =
+      /<h5[^>]*>\s*<a[^>]*href=["']([^"']+)["'][^>]*>([^<]*)/i.exec(chunk) ||
+      /<a[^>]*href=["']([^"']*jkanime\.net[^"']*)["'][^>]*>([^<]*)/i.exec(chunk);
+    if (!linkM) continue;
+    var href = absUrl(linkM[1]);
+    var title = (linkM[2] || '').trim();
+    var slug = slugFromUrl(href);
+    if (!slug || seen[slug]) continue;
+    if (/\/(buscar|directorio)\b/i.test(href)) continue;
+
+    var imgM = /(?:data-setbg|src)=["']([^"']+)["']/i.exec(chunk);
+    var statusM = /(?:status|estado)[^>]*>([^<]+)/i.exec(chunk);
+    var typeM = /(?:tipo|type)[^>]*>([^<]+)/i.exec(chunk);
+
+    var it = mapItemFromSearch({
+      title: title || slug.replace(/-/g, ' '),
+      url: href,
+      image: imgM ? imgM[1] : '',
+      status: statusM ? statusM[1].trim() : '',
+      type: typeM ? typeM[1].trim() : 'Anime',
+    });
+    if (it) {
+      seen[slug] = true;
+      items.push(it);
+    }
+  }
+
+  // Fallback: si el HTML no matcheó, intentar directorio con filtro nombre
+  if (items.length === 0) {
+    try {
+      var dir = await fetchDirectorio({ page: 1, filtro: 'nombre' });
+      // filtrar localmente por query
+      var ql = q.toLowerCase();
+      items = dir.items.filter(function (it) {
+        return (it.title || '').toLowerCase().indexOf(ql) >= 0;
+      });
+    } catch (e) {}
+  }
+
+  return { items: items };
+}
 
 async function discover(args, config) {
   var cat = (args && (args.category || args.tipo || args.type)) || 'animes';
-  var genero = (args && (args.genre || args.genero)) || '';
-  var page = (args && (args.page || args.skip)) || 1;
-  page = parseInt(page, 10) || 1;
+  var page = parseInt((args && args.page) || 1, 10) || 1;
+  var genero = (args && (args.genero || args.genre || args.genreId)) || null;
+  var categoria = (args && args.categoria) || null;
 
-  var opts = { page: page };
-  var catL = String(cat).toLowerCase();
-
-  if (catL === 'donghua') {
-    opts.categoria = 'donghua';
-  } else if (
-    catL === 'animes' ||
-    catL === 'ovas' ||
-    catL === 'onas' ||
-    catL === 'peliculas' ||
-    catL === 'especiales'
+  // Mapear categorías amigables de la app
+  var tipo = '';
+  var catLower = String(cat).toLowerCase();
+  if (
+    catLower === 'animes' ||
+    catLower === 'anime' ||
+    catLower === 'series' ||
+    catLower === 'tv'
   ) {
-    opts.tipo = catL;
-  } else if (catL === 'series' || catL === 'anime' || catL === 'tv') {
-    opts.tipo = 'animes';
-  } else if (catL === 'movie' || catL === 'movies') {
-    opts.tipo = 'peliculas';
+    tipo = 'animes';
+  } else if (catLower === 'ovas' || catLower === 'ova') {
+    tipo = 'ovas';
+  } else if (catLower === 'onas' || catLower === 'ona') {
+    tipo = 'onas';
+  } else if (
+    catLower === 'peliculas' ||
+    catLower === 'películas' ||
+    catLower === 'movie' ||
+    catLower === 'movies'
+  ) {
+    tipo = 'peliculas';
+  } else if (catLower === 'especiales' || catLower === 'special') {
+    tipo = 'especiales';
+  } else if (catLower === 'donghua') {
+    categoria = 'donghua';
+    tipo = '';
+  } else if (GENEROS.indexOf(catLower) >= 0) {
+    genero = catLower;
+    tipo = '';
+  } else {
+    // listar tipos + géneros como “categorías” si la app pide el índice
+    tipo = catLower || 'animes';
   }
 
-  if (genero) opts.genero = String(genero).toLowerCase().replace(/\s+/g, '-');
+  if (genero && /^\d+$/.test(String(genero))) genero = null;
 
-  var dir = await fetchDirectorio(opts);
+  var result = await fetchDirectorio({
+    page: page,
+    tipo: tipo || undefined,
+    genero: genero || undefined,
+    categoria: categoria || undefined,
+  });
+
   return {
-    items: dir.items || [],
-    page: dir.currentPage,
-    hasMore: dir.currentPage < dir.lastPage,
+    items: result.items,
+    page: result.currentPage,
+    totalPages: result.lastPage,
+    hasNext: result.currentPage < result.lastPage,
+    // Ayuda a la UI de filtros
+    filters: {
+      types: TIPOS,
+      genres: GENEROS,
+    },
   };
 }
 
-// ─── GET META + EPISODIOS — igual que content_api.dart ───
-// POST /ajax/episodes/{animeId}/{page}  con CSRF
-
-function extractIdsFromPage(html, animeUrl) {
+// ─── GET META (ficha + episodios) ─────────────────────────
+async function extractIdsFromPage(html, animeUrl) {
   var csrf = '';
   var csrfM = /name=["']csrf-token["']\s+content=["']([^"']+)["']/i.exec(html);
   if (csrfM) csrf = csrfM[1].trim();
 
   var animeId = 0;
-  var idM = /data-anime=["'](\d+)["']/i.exec(html);
+  // data-anime en div.ml-2 (scraper actual), data-anime-id, anime_id, ajax paths
+  var idM =
+    /data-anime=["'](\d+)["']/i.exec(html) ||
+    /data-anime-id=["'](\d+)["']/i.exec(html) ||
+    /anime[_-]?id["']?\s*[:=]\s*["']?(\d+)/i.exec(html) ||
+    /\/ajax\/pagination_episodes\/(\d+)\//i.exec(html) ||
+    /\/ajax\/episodes\/(\d+)\//i.exec(html);
   if (idM) animeId = parseInt(idM[1], 10) || 0;
 
+  // Páginas de episodios desde enlaces #pagN
+  var pages = [];
+  var pageRe = /href=["'][^"']*#pag(\d+)["']/gi;
+  var pm;
+  var seenP = {};
+  while ((pm = pageRe.exec(html))) {
+    var p = parseInt(pm[1], 10) || 1;
+    if (!seenP[p]) {
+      seenP[p] = true;
+      pages.push(p);
+    }
+  }
+  if (pages.length === 0) pages = [1];
+
   var slug = slugFromUrl(animeUrl);
-  return { csrf: csrf, animeId: animeId, slug: slug };
+  return { csrf: csrf, animeId: animeId, slug: slug, pages: pages };
 }
 
 function parseAnimeInfo(html, url) {
-  // Título: div.anime_info h3  (igual que content_api.dart)
   var title = '';
   var tM =
-    /<div[^>]*class="[^"]*anime_info[^"]*"[^>]*>[\s\S]*?<h3[^>]*>([^<]+)/i.exec(html) ||
-    /property=["']og:title["'][^>]*content=["']([^"']+)/i.exec(html) ||
+    /class=["'][^"']*anime__details__title[^"']*["'][^>]*>[\s\S]*?<h3[^>]*>([^<]+)/i.exec(html) ||
+    /<h1[^>]*>([^<]+)<\/h1>/i.exec(html) ||
+    /<h3[^>]*>([^<]+)<\/h3>/i.exec(html) ||
     /<title>([^|<]+)/i.exec(html);
-  if (tM) {
-    title = clean(tM[1]).replace(/\s*[—\-–|]\s*Jk?Anime.*$/i, '').trim();
-  }
+  if (tM) title = tM[1].replace(/\s*[-|].*$/, '').trim();
 
-  // Sinopsis: div.anime_info p.scroll
   var overview = '';
   var oM =
-    /<div[^>]*class="[^"]*anime_info[^"]*"[^>]*>[\s\S]*?<p[^>]*class="[^"]*scroll[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(html) ||
-    /<p[^>]*class="[^"]*scroll[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(html);
+    /class=["'][^"']*anime__details__text[^"']*["'][^>]*>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/i.exec(html) ||
+    /<p[^>]*class="[^"]*(?:sinopsis|synopsis|description|text)[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(
+      html
+    ) ||
+    /itemprop=["']description["'][^>]*>([\s\S]*?)</i.exec(html);
   if (oM) {
-    overview = clean(oM[1].replace(/<[^>]+>/g, ''));
+    overview = oM[1]
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
-  // Poster: div.anime_pic img
   var poster = null;
   var pM =
-    /<div[^>]*class="[^"]*anime_pic[^"]*"[^>]*>[\s\S]*?<img[^>]*src=["']([^"']+)["']/i.exec(html) ||
-    /property=["']og:image["'][^>]*content=["']([^"']+)/i.exec(html);
+    /<div[^>]*class="[^"]*anime__details__pic[^"]*"[^>]*data-setbg=["']([^"']+)["']/i.exec(
+      html
+    ) ||
+    /class=["'][^"']*anime__details__pic[^"']*["'][^>]*data-setbg=["']([^"']+)["']/i.exec(html) ||
+    /<img[^>]*class="[^"]*(?:poster|cover|anime)[^"]*"[^>]*src=["']([^"']+)["']/i.exec(
+      html
+    );
   if (pM) poster = absImg(pM[1]);
 
-  // Géneros, tipo, status
   var genres = [];
-  var tipo = 'Anime';
-  var status = '';
-  var totalEps = 0;
-
   var gRe = /\/genero\/([^"'\/]+)["']/gi;
   var gm;
   var seenG = {};
@@ -457,15 +556,20 @@ function parseAnimeInfo(html, url) {
     }
   }
 
-  var tipoM = /(?:Tipo|Type)\s*:?\s*<\/?(?:[^>]+>)?\s*([^<\n]+)/i.exec(html);
-  if (tipoM) tipo = clean(tipoM[1]);
+  var status = '';
+  var sM = /(?:Estado|Status)[^:]*:\s*<\/?(?:[^>]+>)?\s*([^<\n]+)/i.exec(html);
+  if (sM) status = sM[1].trim();
 
-  var statusM =
-    /class=["'][^"']*enemision[^"']*["'][^>]*>([^<]+)/i.exec(html) ||
-    /(?:Estado|Status)\s*:?\s*<\/?(?:[^>]+>)?\s*([^<\n]+)/i.exec(html);
-  if (statusM) status = clean(statusM[1]);
+  var tipo = 'Anime';
+  var tipoM = /(?:Tipo|Type)[^:]*:\s*<\/?(?:[^>]+>)?\s*([^<\n]+)/i.exec(html);
+  if (tipoM) tipo = tipoM[1].trim();
 
-  var epM = /(?:Episodios?)\s*:?\s*<\/?(?:[^>]+>)?\s*(\d+)/i.exec(html);
+  var totalEps = 0;
+  var epM =
+    /(?:Episodios|Episodes|Capítulos)[^:]*:\s*<\/?(?:[^>]+>)?\s*(\d+)/i.exec(
+      html
+    ) ||
+    /data-total=["'](\d+)["']/i.exec(html);
   if (epM) totalEps = parseInt(epM[1], 10) || 0;
 
   return {
@@ -479,88 +583,72 @@ function parseAnimeInfo(html, url) {
   };
 }
 
-/**
- * POST /ajax/episodes/{animeId}/{page}  — igual que content_api.dart
- */
-async function fetchEpisodesAjax(animeId, csrf, animeUrl, cookie) {
-  if (!animeId || !csrf) return [];
+async function fetchEpisodesAjax(animeId, pages, animeUrl) {
+  // Endpoint actual de JKAnime: GET /ajax/pagination_episodes/{id}/{page}/
+  // (el antiguo POST /ajax/episodes/ + CSRF ya no funciona)
+  if (!animeId) return [];
   var all = [];
-  var page = 1;
-  var maxPages = 50;
-  var total = 0;
+  var pageList = Array.isArray(pages) && pages.length ? pages : [1];
+  // Ordenar páginas numéricamente
+  pageList = pageList.slice().sort(function (a, b) {
+    return a - b;
+  });
 
-  while (page <= maxPages) {
-    var url = BASE + '/ajax/episodes/' + animeId + '/' + page;
+  for (var pi = 0; pi < pageList.length; pi++) {
+    var page = pageList[pi];
+    var url = BASE + '/ajax/pagination_episodes/' + animeId + '/' + page + '/';
     try {
       var res = await fetch(url, {
-        method: 'POST',
+        method: 'GET',
         headers: headers({
           Accept: 'application/json, text/javascript, */*; q=0.01',
-          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
           'X-Requested-With': 'XMLHttpRequest',
-          'X-CSRF-TOKEN': csrf,
           Referer: animeUrl,
-          Origin: BASE,
-          Cookie: cookie || '',
         }),
-        body: '_token=' + encodeURIComponent(csrf),
       });
-
-      if (res.status === 419) break;
       if (!res.ok) break;
-
-      var data = await res.json();
-      var list = data.data || data.episodes || [];
+      var text = await res.text();
+      var data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        break;
+      }
+      // Puede ser array directo o { data: [...] }
+      var list = Array.isArray(data) ? data : data.data || data.episodes || [];
       if (!Array.isArray(list) || list.length === 0) break;
-
-      total = parseInt(data.total, 10) || total || 0;
-      var slug = slugFromUrl(animeUrl);
 
       for (var i = 0; i < list.length; i++) {
         var ep = list[i];
         var num =
           parseInt(ep.number || ep.episode || ep.episodio || ep.id, 10) ||
           all.length + 1;
-
-        var img = ep.image || '';
-        var poster = null;
-        if (img && String(img).length > 10) {
-          var cleanImg = String(img).replace(/^\//, '');
-          poster = CDN + '/assets/images/animes/video/image_thumb/' + cleanImg;
-        } else {
-          poster = CDN + '/assets/images/animes/image/' + slug + '.jpg';
+        var epUrl =
+          absUrl(ep.url || ep.link || '') ||
+          animeUrl.replace(/\/$/, '') + '/' + num + '/';
+        var img = ep.image || ep.thumbnail || '';
+        if (img && img.indexOf('http') !== 0 && img.indexOf('/') !== 0) {
+          img = CDN + '/assets/images/animes/video/image_thumb/' + img;
         }
-
-        var epUrl = BASE + '/' + slug + '/' + num + '/';
-
         all.push({
-          id: 'jkanime:' + slug + ':' + num,
-          title: 'Capítulo ' + num,
-          name: 'Capítulo ' + num,
+          id: 'jkanime:' + slugFromUrl(animeUrl) + ':' + num,
+          title: ep.title || 'Episodio ' + num,
           seasonNumber: 1,
           episodeNumber: num,
-          number: num,
-          overview: '',
-          poster: poster,
-          still: poster,
-          airDate: null,
-          url: epUrl,
+          overview: ep.synopsis || ep.description || '',
+          poster: absImg(img),
+          airDate: ep.date || null,
           extra: {
             jkanimeUrl: epUrl,
             tmdbId: epUrl,
-            url_personalizada: epUrl,
           },
         });
       }
-
-      if (total > 0 && all.length >= total) break;
-      if (list.length < 12) break;
-      page++;
     } catch (e) {
       break;
     }
   }
-
+  // Ordenar por número de episodio
   all.sort(function (a, b) {
     return (a.episodeNumber || 0) - (b.episodeNumber || 0);
   });
@@ -574,20 +662,15 @@ function buildEpisodesFromTotal(slug, total) {
     var epUrl = BASE + '/' + slug + '/' + i + '/';
     eps.push({
       id: 'jkanime:' + slug + ':' + i,
-      title: 'Capítulo ' + i,
-      name: 'Capítulo ' + i,
+      title: 'Episodio ' + i,
       seasonNumber: 1,
       episodeNumber: i,
-      number: i,
       overview: '',
-      poster: CDN + '/assets/images/animes/image/' + slug + '.jpg',
-      still: null,
+      poster: null,
       airDate: null,
-      url: epUrl,
       extra: {
         jkanimeUrl: epUrl,
         tmdbId: epUrl,
-        url_personalizada: epUrl,
       },
     });
   }
@@ -600,7 +683,7 @@ async function getMeta(args, config) {
 
   var slug = '';
   if (parts[0] === 'jkanime' && parts.length >= 2) {
-    slug = parts.slice(1).join(':').replace(/\/+$/, '').split('/')[0];
+    slug = parts[1];
   } else if (String(id).indexOf('jkanime.net') >= 0) {
     slug = slugFromUrl(id);
   } else {
@@ -611,21 +694,16 @@ async function getMeta(args, config) {
   var jkUrl = animeUrl(slug);
   var html = await fetchHtml(jkUrl);
   var info = parseAnimeInfo(html, jkUrl);
-  var ids = extractIdsFromPage(html, jkUrl);
+  var ids = await extractIdsFromPage(html, jkUrl);
 
   var type = mapTipoToType(info.tipo);
-  var poster = info.poster || CDN + '/assets/images/animes/image/' + slug + '.jpg';
-
   var item = {
     id: 'jkanime:' + slug,
     title: info.title || slug.replace(/-/g, ' '),
-    name: info.title || slug.replace(/-/g, ' '),
     type: type,
     overview: info.overview || '',
-    poster: poster,
-    posterUrl: poster,
-    image: poster,
-    backdrop: poster,
+    poster: info.poster,
+    backdrop: info.poster,
     genres: info.genres || [],
     year: null,
     rating: null,
@@ -647,9 +725,8 @@ async function getMeta(args, config) {
     try {
       episodes = await fetchEpisodesAjax(
         ids.animeId,
-        ids.csrf,
-        jkUrl,
-        ''
+        ids.pages,
+        jkUrl
       );
     } catch (e) {}
 
@@ -657,22 +734,29 @@ async function getMeta(args, config) {
       episodes = buildEpisodesFromTotal(slug, info.totalEpisodes);
     }
 
+    // Si aún no hay total, intentar contar desde HTML
     if (episodes.length === 0) {
-      var countM = /data-total=["'](\d+)["']/i.exec(html);
+      var countM =
+        /data-total=["'](\d+)["']/i.exec(html) ||
+        /(?:Episodios|Episodes|Capítulos)\s*:\s*(\d+)/i.exec(html) ||
+        /class=["'][^"']*numbers[^"']*["'][^>]*>[\s\S]*?(\d+)\s*<\/a>\s*$/im.exec(html);
       var total = countM ? parseInt(countM[1], 10) : 0;
       if (total > 0) episodes = buildEpisodesFromTotal(slug, total);
+    }
+
+    // Último recurso: si hay animeId pero 0 eps, generar al menos 1 y dejar que la fuente resuelva
+    if (episodes.length === 0 && ids.animeId) {
+      episodes = buildEpisodesFromTotal(slug, 12);
     }
 
     item.extra.seasons = [
       {
         seasonNumber: 1,
-        season_number: 1,
         name: 'Temporada 1',
         episodeCount: episodes.length || info.totalEpisodes || 0,
-        episode_count: episodes.length || info.totalEpisodes || 0,
         overview: info.overview || '',
         airDate: null,
-        poster: poster,
+        poster: info.poster,
         episodes: episodes,
       },
     ];

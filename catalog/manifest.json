@@ -1,9 +1,9 @@
 {
   "id": "jkanime-catalog",
   "name": "JKAnime Catalog",
-  "version": "1.1.0",
-  "description": "Catálogo JKAnime alineado con scrapers Dart. Búsqueda (page_directorio/anime__item), directorio (var animes), meta+caps (POST /ajax/episodes + CSRF). CDN jkdesa.",
-  "logo": "https://cdn.jkdesa.com/assets/images/logo.png",
+  "version": "1.0.1",
+  "description": "Catálogo JKAnime. Tipos: anime, ovas, onas, películas, especiales. Géneros y filtros. IDs jkanime:slug. extra.tmdbId = URL del anime para que la fuente JKAnime resuelva. Temporadas/episodios en getMeta (pagination_episodes).",
+  "logo": "https://cdn.jkdesu.com/assets/images/logo.png",
   "author": "Community",
   "types": ["catalog"],
   "type": "catalog",
