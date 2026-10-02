@@ -44,12 +44,16 @@ function slugFromUrl(url) {
   return s.split('/')[0] || '';
 }
 
-function isJkAnimeId(id) {
-  if (!id) return false;
-  var s = String(id);
+function isJkAnimeId(s) {
+  if (s == null || s === '') return false;
+  s = String(s).trim();
   if (s.indexOf('jkanime.net') >= 0) return true;
   if (s.indexOf('jkanime:') === 0) return true;
-  if (/^[a-z0-9][a-z0-9\-]*$/i.test(s) && s.indexOf('tmdb') < 0) return true;
+  if (s.indexOf('jkdesu') >= 0) return true;
+  // slug simple sin espacios (la app a veces manda solo el slug)
+  if (/^[a-z0-9]+(?:-[a-z0-9]+)+$/i.test(s) && s.indexOf('http') !== 0) {
+    return true;
+  }
   return false;
 }
 
@@ -659,11 +663,19 @@ async function extract(url, opts) {
 }
 
 async function getStreams(tmdbId, type, season, episode) {
+  // La app pasa tmdbId = URL del capítulo o jkanime:slug o URL de serie
+  if (tmdbId && typeof tmdbId === 'object') {
+    var o = tmdbId;
+    tmdbId = o.tmdbId || o.id || o.url || o.url_personalizada || '';
+    type = type || o.type;
+    season = season != null ? season : o.season;
+    episode = episode != null ? episode : o.episode;
+  }
   if (!isJkAnimeId(tmdbId)) {
     return [];
   }
 
-  var epUrl = episodeUrlFrom(tmdbId, episode || 1);
+  var epUrl = episodeUrlFrom(tmdbId, episode != null ? episode : 1);
   if (!epUrl) return [];
 
   var html = await httpGet(epUrl);
